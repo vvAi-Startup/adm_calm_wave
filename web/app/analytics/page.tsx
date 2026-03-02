@@ -33,6 +33,11 @@ const MOCK: AnalyticsData = {
         { day: "Dia 7", rate: 50 },
         { day: "Dia 30", rate: 30 },
     ],
+    device_performance: [
+        { device: "Samsung S23", time: "0.15s", pct: 90 },
+        { device: "Xiaomi Redmi Note 11", time: "0.25s", pct: 70 },
+        { device: "Motorola Moto G8", time: "0.45s", pct: 45 },
+    ],
 };
 
 export default function AnalyticsPage() {
@@ -59,50 +64,50 @@ export default function AnalyticsPage() {
         <div className="app-layout">
             <Sidebar />
             <main className="app-main">
-                <Header title="Analytics AvanÃÂÃÂÃÂÃÂ§ado" subtitle="Real-time metrics and performance data insights" />
+                <Header title="Analytics Avançado" subtitle="Real-time metrics and performance data insights" />
                 <div className="page-content">
                     {/* Stat Cards */}
                     <div className="stats-grid">
                         <div className="stat-card">
-                            <div className="stat-icon brand">ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ¥</div>
+                            <div className="stat-icon brand">👥</div>
                             <div className="stat-body">
                                 <div className="stat-label">Total Active Users</div>
                                 <div className="stat-value">{data.total_active_users.toLocaleString()}</div>
-                                <div className="stat-delta">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ +12% vs mÃÂÃÂÃÂÃÂªs passado</div>
+                                <div className="stat-delta">↑ +12% vs mês passado</div>
                             </div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-icon success">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ±ÃÂÃÂ¯ÃÂÃÂ¸ÃÂÃÂ</div>
+                            <div className="stat-icon success">⏱️</div>
                             <div className="stat-body">
                                 <div className="stat-label">Session Duration</div>
                                 <div className="stat-value">{data.session_duration}</div>
-                                <div className="stat-delta">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ +5% vs mÃÂÃÂÃÂÃÂªs passado</div>
+                                <div className="stat-delta">↑ +5% vs mês passado</div>
                             </div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-icon warning">ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ</div>
+                            <div className="stat-icon warning">📉</div>
                             <div className="stat-body">
                                 <div className="stat-label">Bounce Rate</div>
                                 <div className="stat-value">{data.bounce_rate}%</div>
-                                <div className="stat-delta neg">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ +2% vs mÃÂÃÂÃÂÃÂªs passado</div>
+                                <div className="stat-delta neg">↑ +2% vs mês passado</div>
                             </div>
                         </div>
                         <div className="stat-card">
-                            <div className="stat-icon info">ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¯ÃÂÃÂ¸ÃÂÃÂ</div>
+                            <div className="stat-icon info">🎙️</div>
                             <div className="stat-body">
-                                <div className="stat-label">Total ÃÂÃÂÃÂÃÂudios</div>
+                                <div className="stat-label">Total Áudios</div>
                                 <div className="stat-value">{data.total_audios.toLocaleString()}</div>
-                                <div className="stat-delta">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ +8% essa semana</div>
+                                <div className="stat-delta">↑ +8% essa semana</div>
                             </div>
                         </div>
                     </div>
 
                     <div className="grid-2">
-                        {/* Crescimento de UsuÃÂÃÂÃÂÃÂ¡rios */}
+                        {/* Crescimento de Usuários */}
                         <div className="card">
                             <div className="card-header">
                                 <div className="card-title">User Growth Trends</div>
-                                <span className="badge badge-brand">ÃÂÃÂÃÂÃÂltimos 6 meses</span>
+                                <span className="badge badge-brand">Últimos 6 meses</span>
                             </div>
                             <div className="bar-chart">
                                 {data.user_growth.map((g, i) => (
@@ -110,7 +115,7 @@ export default function AnalyticsPage() {
                                         <div
                                             className={`bar ${i === data.user_growth.length - 1 ? "active" : ""}`}
                                             style={{ height: `${(g.users / maxGrowth) * 100}%` }}
-                                            title={`${g.month}: ${g.users} usuÃÂÃÂÃÂÃÂ¡rios`}
+                                            title={`${g.month}: ${g.users} usuários`}
                                         />
                                         <span className="bar-label">{g.month}</span>
                                     </div>
@@ -154,11 +159,7 @@ export default function AnalyticsPage() {
                             ))}
                             <div style={{ flex: 2, minWidth: 200 }}>
                                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "var(--text-primary)" }}>Performance por Dispositivo</div>
-                                {[
-                                    { device: "Samsung S23", time: "0.15s", pct: 90 },
-                                    { device: "Xiaomi Redmi Note 11", time: "0.25s", pct: 70 },
-                                    { device: "Motorola Moto G8", time: "0.45s", pct: 45 },
-                                ].map((d, i) => (
+                                {(data.device_performance || []).map((d, i) => (
                                     <div key={i} className="progress-wrap">
                                         <div className="progress-header">
                                             <span className="progress-name">{d.device}</span>

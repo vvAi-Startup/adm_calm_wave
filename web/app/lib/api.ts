@@ -210,6 +210,7 @@ export interface AnalyticsData {
   user_growth: { month: string; users: number }[];
   features_usage: { name: string; usage: number }[];
   retention: { day: string; rate: number }[];
+  device_performance?: { device: string; time: string; pct: number }[];
 }
 
 export interface Event {

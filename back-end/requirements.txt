@@ -13,3 +13,11 @@ SpeechRecognition
 pydub
 Flask-SocketIO
 eventlet
+flask-swagger-ui
+Werkzeug
+marshmallow
+flask-marshmallow
+celery
+redis
+pytest
+pytest-flask

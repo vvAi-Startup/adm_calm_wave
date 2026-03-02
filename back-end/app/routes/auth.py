@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
+from marshmallow import ValidationError
+from app.schemas.auth import LoginSchema, RegisterSchema
 from app import db
 from app.models.user import User, UserDevice
 from app.models.other import Event
@@ -12,12 +14,14 @@ auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
-    if not data or not data.get("email") or not data.get("password"):
-        return jsonify({"error": "Email e senha são obrigatórios"}), 400
+    try:
+        data = LoginSchema().load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Parâmetros inválidos", "messages": err.messages}), 400
 
     user = User.query.filter_by(email=data["email"]).first()
     if not user or not bcrypt.checkpw(data["password"].encode(), user.password_hash.encode()):
+        return jsonify({"error": "Credenciais inválidas"}), 401
         return jsonify({"error": "Credenciais inválidas"}), 401
 
     if not user.active:
@@ -58,10 +62,10 @@ def login():
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    data = request.get_json()
-    required = ["name", "email", "password"]
-    if not data or not all(k in data for k in required):
-        return jsonify({"error": "Nome, email e senha são obrigatórios"}), 400
+    try:
+        data = RegisterSchema().load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Parametros invalidos", "messages": err.messages}), 400
 
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Email já cadastrado"}), 409

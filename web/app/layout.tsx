@@ -15,6 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <meta charSet="utf-8" />
+      </head>
       <body>
         <AuthProvider>
           <ProtectedRoute>{children}</ProtectedRoute>
