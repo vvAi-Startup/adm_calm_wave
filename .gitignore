@@ -1,0 +1,42 @@
+# Node.js / Next.js (Frontend)
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.env*.local
+web/.vercel/
+web/*.tsbuildinfo
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/.pnp.*
+
+# Python / Flask (Backend)
+**/__pycache__/
+**/*.py[cod]
+back-end/*$py.class
+back-end/venv/
+back-end/env/
+back-end/.env
+back-end/.venv/
+back-end/instance/
+back-end/.pytest_cache/
+back-end/.coverage
+back-end/htmlcov/
+
+# Uploads / Data
+back-end/uploads/
+uploads/
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.db
+*.sqlite3
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

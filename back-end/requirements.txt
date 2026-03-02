@@ -1,0 +1,15 @@
+Flask
+Flask-SQLAlchemy
+Flask-JWT-Extended
+Flask-CORS
+bcrypt
+python-dotenv
+SQLAlchemy
+torch
+torchaudio
+soundfile
+numpy
+SpeechRecognition
+pydub
+Flask-SocketIO
+eventlet
