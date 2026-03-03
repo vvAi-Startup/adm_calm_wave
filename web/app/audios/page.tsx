@@ -34,6 +34,10 @@ export default function AudiosPage() {
     const [playerAudio, setPlayerAudio] = useState<Audio | null>(null);
     const [uploading, setUploading] = useState(false);
 
+    // Batch Selection Data
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [exporting, setExporting] = useState(false);
+
     const fetchAudios = () => {
         setLoading(true);
         const params: Record<string, string> = { page: currentPage.toString() };
@@ -80,12 +84,68 @@ export default function AudiosPage() {
         try {
             await audiosAPI.delete(id);
             setAudios((prev) => prev.filter((a) => a.id !== id));
-        } catch { 
-            alert("Erro ao remover."); 
+            setSelectedIds(prev => {
+                const updated = new Set(prev);
+                updated.delete(id);
+                return updated;
+            });
+        } catch {
+            alert("Erro ao remover.");
             // Fallback for mock data
             setAudios((prev) => prev.filter((a) => a.id !== id));
         } finally {
             setActionLoading(null);
+        }
+    };
+
+    const toggleSelection = (id: number) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAll = () => {
+        if (selectedIds.size === filtered.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filtered.map(a => a.id)));
+        }
+    };
+
+    const handleBatchExport = async () => {
+        if (selectedIds.size === 0) return;
+        setExporting(true);
+        try {
+            const token = localStorage.getItem("calmwave_token");
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/audios/batch-export`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ audio_ids: Array.from(selectedIds) })
+            });
+
+            if (!res.ok) throw new Error("Falha ao exportar lote");
+
+            // Baixar o ZIP retornado (blob)
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `calmwave_export_${new Date().getTime()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            setSelectedIds(new Set());
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao exportar áudios compactados.");
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -106,18 +166,28 @@ export default function AudiosPage() {
                         <div className="card-header">
                             <div className="card-title">Lista de Áudios</div>
                             <div className="filters-bar" style={{ margin: 0 }}>
+                                {selectedIds.size > 0 && (
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={handleBatchExport}
+                                        disabled={exporting}
+                                        style={{ marginRight: 8, borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                                    >
+                                        {exporting ? "⏳ Gerando ZIP..." : `📦 Baixar ${selectedIds.size} selecionados (ZIP)`}
+                                    </button>
+                                )}
                                 <div style={{ position: 'relative' }}>
-                                    <input 
-                                        type="file" 
-                                        accept="audio/*" 
-                                        onChange={handleUpload} 
-                                        style={{ display: 'none' }} 
-                                        id="audio-upload" 
+                                    <input
+                                        type="file"
+                                        accept="audio/*"
+                                        onChange={handleUpload}
+                                        style={{ display: 'none' }}
+                                        id="audio-upload"
                                         disabled={uploading}
                                     />
-                                    <label 
-                                        htmlFor="audio-upload" 
-                                        className="btn btn-primary" 
+                                    <label
+                                        htmlFor="audio-upload"
+                                        className="btn btn-primary"
                                         style={{ cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.7 : 1 }}
                                     >
                                         {uploading ? "⏳ Processando..." : "⬆️ Fazer Upload"}
@@ -139,6 +209,13 @@ export default function AudiosPage() {
                             <table>
                                 <thead>
                                     <tr>
+                                        <th style={{ width: 40, textAlign: "center" }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                                                onChange={toggleAll}
+                                            />
+                                        </th>
                                         <th>Arquivo</th>
                                         <th>Dispositivo</th>
                                         <th>Duração</th>
@@ -151,11 +228,18 @@ export default function AudiosPage() {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>Carregando...</td></tr>
+                                        <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>Carregando...</td></tr>
                                     ) : filtered.length === 0 ? (
-                                        <tr><td colSpan={8}><div className="empty-state"><div className="empty-icon">🎙️</div><div className="empty-title">Nenhum áudio encontrado</div></div></td></tr>
+                                        <tr><td colSpan={9}><div className="empty-state"><div className="empty-icon">🎙️</div><div className="empty-title">Nenhum áudio encontrado</div></div></td></tr>
                                     ) : filtered.map((audio) => (
-                                        <tr key={audio.id}>
+                                        <tr key={audio.id} style={{ background: selectedIds.has(audio.id) ? 'var(--bg-muted)' : 'transparent' }}>
+                                            <td style={{ textAlign: "center" }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(audio.id)}
+                                                    onChange={() => toggleSelection(audio.id)}
+                                                />
+                                            </td>
                                             <td>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                                     {audio.favorite && <span title="Favorito">⭐</span>}
@@ -172,10 +256,10 @@ export default function AudiosPage() {
                                                 <div style={{ display: "flex", gap: 6 }}>
                                                     <button className="btn-icon" title="Ver Detalhes" onClick={() => router.push(`/audios/${audio.id}`)}>👁️</button>
                                                     <button className="btn-icon" title="Ouvir" onClick={() => setPlayerAudio(audio)}>▶</button>
-                                                    <button 
-                                                        className="btn-icon" 
-                                                        onClick={() => handleDelete(audio.id)} 
-                                                        title="Remover" 
+                                                    <button
+                                                        className="btn-icon"
+                                                        onClick={() => handleDelete(audio.id)}
+                                                        title="Remover"
                                                         style={{ color: "var(--danger)", opacity: actionLoading === audio.id ? 0.5 : 1 }}
                                                         disabled={actionLoading === audio.id}
                                                     >
@@ -188,12 +272,12 @@ export default function AudiosPage() {
                                 </tbody>
                             </table>
                         </div>
-                        
+
                         {/* Pagination Controls */}
                         {pages > 1 && (
                             <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: 16, borderTop: "1px solid var(--border)" }}>
-                                <button 
-                                    className="btn btn-secondary btn-sm" 
+                                <button
+                                    className="btn btn-secondary btn-sm"
                                     disabled={currentPage === 1}
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 >
@@ -202,8 +286,8 @@ export default function AudiosPage() {
                                 <span style={{ display: "flex", alignItems: "center", fontSize: 14 }}>
                                     Página {currentPage} de {pages}
                                 </span>
-                                <button 
-                                    className="btn btn-secondary btn-sm" 
+                                <button
+                                    className="btn btn-secondary btn-sm"
                                     disabled={currentPage === pages}
                                     onClick={() => setCurrentPage(p => Math.min(pages, p + 1))}
                                 >
@@ -222,9 +306,9 @@ export default function AudiosPage() {
                         <div className="modal-title">🎙️ Player de Áudio</div>
                         <div className="modal-subtitle">{playerAudio.filename}</div>
                         <div className="player" style={{ marginTop: 16 }}>
-                            <audio 
-                                controls 
-                                autoPlay 
+                            <audio
+                                controls
+                                autoPlay
                                 style={{ width: '100%' }}
                                 src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/audios/play/${playerAudio.id}`}
                             >

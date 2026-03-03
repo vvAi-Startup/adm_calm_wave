@@ -7,19 +7,21 @@ import { usersAPI } from "../lib/api";
 
 export default function SettingsPage() {
     const { user, login } = useAuth(); // Assuming login or updateUser context to update local state
-    
+
     // Fallback logic for name
     const [name, setName] = useState(user?.name || "");
     const [darkMode, setDarkMode] = useState(user?.settings?.dark_mode ?? false);
     const [notifications, setNotifications] = useState(user?.settings?.notifications_enabled ?? true);
     const [autoProcess, setAutoProcess] = useState(user?.settings?.auto_process_audio ?? true);
     const [audioQuality, setAudioQuality] = useState(user?.settings?.audio_quality || "high");
+    const [transcriptionLanguage, setTranscriptionLanguage] = useState(user?.transcription_language || "pt-BR");
     const [saved, setSaved] = useState(false);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (user) {
             setName(user.name);
+            setTranscriptionLanguage(user.transcription_language || "pt-BR");
             if (user.settings) {
                 setDarkMode(user.settings.dark_mode);
                 setNotifications(user.settings.notifications_enabled);
@@ -34,6 +36,7 @@ export default function SettingsPage() {
         try {
             const res = await usersAPI.updateSettings({
                 name,
+                transcription_language: transcriptionLanguage,
                 dark_mode: darkMode,
                 notifications_enabled: notifications,
                 auto_process_audio: autoProcess,
@@ -41,7 +44,7 @@ export default function SettingsPage() {
             });
             setSaved(true);
             setTimeout(() => setSaved(false), 2500);
-            
+
             // Optionally update context user here if AuthContext allows
             // if (login) login(res.token, res.user) -- or whatever method AuthContext provides
         } catch (error) {
@@ -122,6 +125,19 @@ export default function SettingsPage() {
                                         <option value="medium">Média (MP3 192kbps)</option>
                                         <option value="low">Baixa (MP3 128kbps)</option>
                                     </select>
+                                </div>
+
+                                <div style={{ marginTop: 16 }}>
+                                    <label className="form-label">Idioma de Transcrição Padrão</label>
+                                    <select className="select" value={transcriptionLanguage} onChange={(e) => setTranscriptionLanguage(e.target.value)}>
+                                        <option value="pt-BR">Português (Brasil)</option>
+                                        <option value="en-US">Inglês (Estados Unidos)</option>
+                                        <option value="es-ES">Espanhol (Espanha)</option>
+                                        <option value="auto">Detectar Automagicamente</option>
+                                    </select>
+                                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                                        O modelo Whisper usará este idioma para otimizar precisão e timestamps.
+                                    </div>
                                 </div>
                             </div>
 

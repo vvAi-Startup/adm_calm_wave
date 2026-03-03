@@ -207,8 +207,8 @@ class AudioDenoiser:
         
         return output_buffer.getvalue()
 
-def transcribe_audio(audio_path: str) -> str:
-    """Transcreve o áudio para texto usando SpeechRecognition"""
+def transcribe_audio(audio_path: str, language: str = "pt-BR") -> str:
+    """Transcreve o áudio para texto usando SpeechRecognition e modelo respectivo de idioma"""
     try:
         import speech_recognition as sr
         from pydub import AudioSegment
@@ -226,9 +226,11 @@ def transcribe_audio(audio_path: str) -> str:
             recognizer.adjust_for_ambient_noise(source, duration=0.5)
             audio_data = recognizer.record(source)
             
-            # Tenta reconhecer usando o Google Web Speech API (gratuito)
-            # pt-BR para português do Brasil
-            text = recognizer.recognize_google(audio_data, language="pt-BR")
+            # Tenta reconhecer usando o idioma desejado
+            if language and language != "auto":
+                text = recognizer.recognize_google(audio_data, language=language)
+            else:
+                text = recognizer.recognize_google(audio_data)
             
         # Limpa arquivo temporário se foi criado
         if wav_path != audio_path and os.path.exists(wav_path):

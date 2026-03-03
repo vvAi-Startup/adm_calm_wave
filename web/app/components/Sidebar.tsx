@@ -6,9 +6,11 @@ import { useAuth } from "../context/AuthContext";
 const navItems = [
     { href: "/dashboard", icon: "📊", label: "Dashboard", section: "Visão Geral" },
     { href: "/audios", icon: "🎙️", label: "Áudios", section: "Conteúdo" },
+    { href: "/playlists", icon: "🗂️", label: "Playlists", section: "Conteúdo" },
     { href: "/streaming", icon: "📡", label: "Streaming", section: "Conteúdo" },
     { href: "/client-simulator", icon: "📱", label: "Simulador App", section: "Conteúdo" },
     { href: "/users", icon: "👥", label: "Usuários", section: "Administração" },
+    { href: "/support", icon: "💬", label: "Suporte (Inbox)", section: "Administração" },
     { href: "/analytics", icon: "📈", label: "Analytics", section: "Administração" },
     { href: "/status", icon: "🖥️", label: "Status", section: "Administração" },
     { href: "/logs", icon: "📋", label: "Logs", section: "Administração" },

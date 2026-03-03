@@ -27,7 +27,7 @@ export const useSocket = () => {
 
     socketInstance.on('audio_completed', (data: any) => {
       console.log('Audio processing completed:', data);
-      toast.success(\`Áudio \${data.filename} processado com sucesso!\`);
+      toast.success(`Áudio ${data.filename} processado com sucesso!`);
       // Optional: Trigger a refetch of the dashboard audios here
     });
 

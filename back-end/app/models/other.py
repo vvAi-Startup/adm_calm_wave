@@ -116,3 +116,44 @@ class Notification(db.Model):
             "is_read": self.is_read,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+class SupportTicket(db.Model):
+    __tablename__ = "support_tickets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(50), default="open") # open, answered, closed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    messages = db.relationship("TicketMessage", backref="ticket", lazy=True, cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "subject": self.subject,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "messages_count": len(self.messages)
+        }
+
+class TicketMessage(db.Model):
+    __tablename__ = "ticket_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey("support_tickets.id"), nullable=False)
+    sender = db.Column(db.String(50), nullable=False) # 'user' or 'admin'
+    message = db.Column(db.Text, nullable=False)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "ticket_id": self.ticket_id,
+            "sender": self.sender,
+            "message": self.message,
+            "sent_at": self.sent_at.isoformat() if self.sent_at else None
+        }

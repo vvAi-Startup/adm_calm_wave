@@ -85,13 +85,15 @@ def analytics():
     def calc_pct(val):
         return int((val / total_events) * 100)
         
+    offline_syncs = Event.query.filter_by(event_type="AUDIO_SYNCED_OFFLINE").count()
+    
     features = [
         {"name": "Gravar Áudio", "usage": calc_pct(total_audios) or 100},
         {"name": "Limpar Ruído", "usage": calc_pct(total_processed)},
         {"name": "Transcrever", "usage": calc_pct(total_transcribed)},
         {"name": "Marcar Favorito", "usage": calc_pct(total_favorites)},
-        {"name": "Ouvir Áudio", "usage": calc_pct(int(total_audios * 0.8))}, # Estimate
-        {"name": "Criar Playlist", "usage": calc_pct(int(total_audios * 0.3))}, # Estimate
+        {"name": "Sincronização Offline", "usage": calc_pct(offline_syncs)},
+        {"name": "Criar Playlist", "usage": calc_pct(int(total_audios * 0.3))},
     ]
     
     # Sort by usage

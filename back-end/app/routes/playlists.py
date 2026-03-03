@@ -220,3 +220,48 @@ def remove_audio_from_playlist(playlist_id, audio_id):
     db.session.commit()
 
     return jsonify({"message": "Áudio removido da playlist"})
+
+@playlists_bp.route("/sync", methods=["POST"])
+@jwt_required()
+def sync_playlists():
+    """Sincroniza playlists criadas offline no mobile"""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    if not data or not isinstance(data.get("playlists"), list):
+        return jsonify({"error": "Formato inválido. 'playlists' deve ser uma lista"}), 400
+        
+    created_count = 0
+    updated_count = 0
+    
+    for p_data in data["playlists"]:
+        name = p_data.get("name")
+        if not name:
+            continue
+            
+        color = p_data.get("color", "#6FAF9E")
+        order = p_data.get("order", 0)
+        
+        existing = Playlist.query.filter_by(user_id=current_user_id, name=name).first()
+        
+        if existing:
+            existing.color = color
+            existing.order = order
+            updated_count += 1
+        else:
+            new_playlist = Playlist(
+                user_id=current_user_id,
+                name=name,
+                color=color,
+                order=order
+            )
+            db.session.add(new_playlist)
+            created_count += 1
+            
+    db.session.commit()
+    
+    return jsonify({
+        "message": "Sincronização concluída",
+        "created": created_count,
+        "updated": updated_count
+    }), 200

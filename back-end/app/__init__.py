@@ -115,6 +115,7 @@ def create_app():
     from app.routes.notifications import notifications_bp
     from app.routes.playlists import playlists_bp
     from app.routes.admin import admin_bp
+    from app.routes.support import support_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
@@ -125,6 +126,7 @@ def create_app():
     app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
     app.register_blueprint(playlists_bp, url_prefix="/api/playlists")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(support_bp, url_prefix="/api/support")
 
     with app.app_context():
         db.create_all()

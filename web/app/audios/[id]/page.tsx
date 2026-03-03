@@ -11,7 +11,7 @@ export default function AudioDetailsPage() {
     const params = useParams();
     const router = useRouter();
     const id = Number(params.id);
-    
+
     const [audio, setAudio] = useState<Audio | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export default function AudioDetailsPage() {
 
     useEffect(() => {
         if (!id) return;
-        
+
         audiosAPI.get(id)
             .then(res => {
                 setAudio(res.audio);
@@ -60,15 +60,15 @@ export default function AudioDetailsPage() {
                 console.error("WaveSurfer load error:", err);
             }
         });
-        
+
         wsOriginal.on('play', () => setIsPlayingOriginal(true));
         wsOriginal.on('pause', () => setIsPlayingOriginal(false));
-        
+
         // Catch fetch errors to prevent unhandled rejections
         wsOriginal.on('error', (err) => {
             console.warn("WaveSurfer original error:", err);
         });
-        
+
         setOriginalWs(wsOriginal);
 
         return () => {
@@ -102,15 +102,15 @@ export default function AudioDetailsPage() {
                 console.error("WaveSurfer load error:", err);
             }
         });
-        
+
         wsProcessed.on('play', () => setIsPlayingProcessed(true));
         wsProcessed.on('pause', () => setIsPlayingProcessed(false));
-        
+
         // Catch fetch errors to prevent unhandled rejections
         wsProcessed.on('error', (err) => {
             console.warn("WaveSurfer processed error:", err);
         });
-        
+
         setProcessedWs(wsProcessed);
 
         return () => {
@@ -122,15 +122,15 @@ export default function AudioDetailsPage() {
         };
     }, [audio]);
 
-    if (loading) return <div className="app-layout"><Sidebar /><main className="app-main"><div style={{padding: 40}}>Carregando...</div></main></div>;
-    if (error || !audio) return <div className="app-layout"><Sidebar /><main className="app-main"><div style={{padding: 40, color: 'red'}}>{error || "Erro"}</div></main></div>;
+    if (loading) return <div className="app-layout"><Sidebar /><main className="app-main"><div style={{ padding: 40 }}>Carregando...</div></main></div>;
+    if (error || !audio) return <div className="app-layout"><Sidebar /><main className="app-main"><div style={{ padding: 40, color: 'red' }}>{error || "Erro"}</div></main></div>;
 
     return (
         <div className="app-layout">
             <Sidebar />
             <main className="app-main">
                 <Header title="Detalhes do Processamento" subtitle={`Análise do arquivo: ${audio.filename}`} />
-                
+
                 <div className="page-content">
                     <button className="btn btn-secondary" onClick={() => router.push('/audios')} style={{ marginBottom: 20 }}>
                         ← Voltar para Lista
@@ -150,17 +150,17 @@ export default function AudioDetailsPage() {
                                 <div className="card-title">Áudio Original (Com Ruído)</div>
                             </div>
                             <div style={{ padding: 20 }}>
-                                <button 
-                                    className="btn btn-primary" 
+                                <button
+                                    className="btn btn-primary"
                                     onClick={() => originalWs?.playPause()}
                                     style={{ marginBottom: 16 }}
                                 >
                                     {isPlayingOriginal ? "⏸ Pausar" : "▶️ Tocar Original"}
                                 </button>
-                                
+
                                 <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Forma de Onda</div>
                                 <div ref={originalWaveRef} style={{ background: '#f3f4f6', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}></div>
-                                
+
                                 <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Espectrograma</div>
                                 <div ref={originalSpecRef} style={{ background: '#111827', borderRadius: 8, overflow: 'hidden', minHeight: 100 }}></div>
                             </div>
@@ -174,17 +174,17 @@ export default function AudioDetailsPage() {
                             <div style={{ padding: 20 }}>
                                 {audio.processed ? (
                                     <>
-                                        <button 
-                                            className="btn btn-primary" 
+                                        <button
+                                            className="btn btn-primary"
                                             onClick={() => processedWs?.playPause()}
                                             style={{ marginBottom: 16, background: 'var(--success)', borderColor: 'var(--success)' }}
                                         >
                                             {isPlayingProcessed ? "⏸ Pausar" : "▶️ Tocar Processado"}
                                         </button>
-                                        
+
                                         <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Forma de Onda</div>
                                         <div ref={processedWaveRef} style={{ background: '#eff6ff', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}></div>
-                                        
+
                                         <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Espectrograma</div>
                                         <div ref={processedSpecRef} style={{ background: '#111827', borderRadius: 8, overflow: 'hidden', minHeight: 100 }}></div>
                                     </>
@@ -204,16 +204,41 @@ export default function AudioDetailsPage() {
                         </div>
                         <div style={{ padding: 20 }}>
                             {audio.transcribed ? (
-                                <div style={{ 
-                                    padding: 20, 
-                                    background: 'var(--bg-muted)', 
-                                    borderRadius: 8, 
-                                    fontSize: 16, 
+                                <div style={{
+                                    padding: 20,
+                                    background: 'var(--bg-muted)',
+                                    borderRadius: 8,
+                                    fontSize: 16,
                                     lineHeight: 1.6,
                                     color: 'var(--text-main)'
                                 }}>
-                                    {/* @ts-ignore - transcription_text is not in the Audio interface yet, we'll add it */}
-                                    {audio.transcription_text || "Texto não disponível."}
+                                    {(() => {
+                                        const text = (audio as any).transcription_text || "";
+                                        if (!text) return "Texto não disponível.";
+
+                                        // Mockup de Interactive Transcript (divide pelo tempo)
+                                        const words = text.split(" ");
+                                        const timePerWord = audio.duration_seconds / Math.max(words.length, 1);
+
+                                        return words.map((word: string, i: number) => (
+                                            <span
+                                                key={i}
+                                                style={{ cursor: "pointer", transition: "color 0.2s" }}
+                                                className="interactive-word"
+                                                onClick={() => {
+                                                    if (processedWs) {
+                                                        const targetTime = i * timePerWord;
+                                                        processedWs.setTime(targetTime);
+                                                        processedWs.play();
+                                                    }
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--brand)")}
+                                                onMouseLeave={(e) => (e.currentTarget.style.color = "inherit")}
+                                            >
+                                                {word}
+                                            </span>
+                                        ));
+                                    })()}
                                 </div>
                             ) : (
                                 <div style={{ color: 'var(--text-muted)' }}>

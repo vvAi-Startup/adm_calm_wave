@@ -60,12 +60,47 @@ export default function AnalyticsPage() {
 
     const maxGrowth = Math.max(...data.user_growth.map((g) => g.users), 1);
 
+    const handleExportCSV = () => {
+        const rows = [
+            ["Metrica", "Valor"],
+            ["Total Active Users", data.total_active_users],
+            ["Total Users", data.total_users],
+            ["Session Duration", data.session_duration],
+            ["Bounce Rate", data.bounce_rate + "%"],
+            ["Total Audios", data.total_audios],
+            [],
+            ["Mes", "Novos Usuarios"],
+            ...data.user_growth.map(g => [g.month, g.users]),
+            [],
+            ["Funcionalidade", "Uso (%)"],
+            ...data.features_usage.map(f => [f.name, f.usage])
+        ];
+
+        const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `calmwave_analytics_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleExportPDF = () => {
+        // Usa o print do navegador estilizado
+        window.print();
+    };
+
     return (
         <div className="app-layout">
             <Sidebar />
-            <main className="app-main">
+            <main className="app-main print-main">
                 <Header title="Analytics Avançado" subtitle="Real-time metrics and performance data insights" />
-                <div className="page-content">
+                <div className="page-content" id="printable-area">
+                    <div className="hide-on-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginBottom: 20 }}>
+                        <button className="btn btn-secondary" onClick={handleExportCSV}>📊 Exportar CSV</button>
+                        <button className="btn btn-primary" onClick={handleExportPDF}>📄 Exportar PDF</button>
+                    </div>
                     {/* Stat Cards */}
                     <div className="stats-grid">
                         <div className="stat-card">

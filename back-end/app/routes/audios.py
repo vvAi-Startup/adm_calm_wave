@@ -4,7 +4,10 @@ from app import db, socketio, socketio
 from app.models.audio import Audio
 import os
 import time
+import io
+import zipfile
 from werkzeug.utils import secure_filename
+from app.services.push_service import PushService
 
 audios_bp = Blueprint("audios", __name__)
 
@@ -114,7 +117,13 @@ def upload_audio():
             # Transcribe audio
             if transcribe_audio:
                 print("Transcribing audio...")
-                transcription = transcribe_audio(processed_path)
+                
+                # Fetch user language setting
+                from app.models.user import User
+                user_record = User.query.get(user_id)
+                lang = user_record.transcription_language if user_record and hasattr(user_record, 'transcription_language') and user_record.transcription_language else "pt-BR"
+                
+                transcription = transcribe_audio(processed_path, language=lang)
                 if transcription:
                     audio.transcribed = True
                     audio.transcription_text = transcription
@@ -134,6 +143,15 @@ def upload_audio():
             )
             db.session.add(success_event)
             db.session.commit()
+            
+            # Send Push Notification
+            PushService.send_push_notification(
+                user_id=user_id,
+                title="Áudio Processado",
+                message=f"Seu áudio '{filename}' foi limpo e está pronto.",
+                data_payload={"audio_id": audio.id}
+            )
+            
             print(f"Audio processed successfully in {audio.processing_time_ms}ms")
             # Emit websocket event
             socketio.emit("audio_completed", {"audio_id": audio.id, "filename": audio.filename, "message": "Processamento concluído!"}, namespace="/")
@@ -157,6 +175,73 @@ def upload_audio():
             db.session.commit()
             
     return jsonify({"audio": audio.to_dict()}), 201
+
+@audios_bp.route("/sync", methods=["POST"])
+@jwt_required()
+def sync_audio_offline():
+    """Syncs an audio that was already processed offline in the mobile app."""
+    if 'file' not in request.files:
+        return jsonify({"error": "Nenhum arquivo original enviado"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Nome de arquivo original vazio"}), 400
+
+    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg", ".aac")):
+        return jsonify({"error": "Formato não suportado."}), 400
+        
+    user_id = get_jwt_identity()
+    
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(upload_dir, "sync_" + filename)
+    file.save(file_path)
+    
+    processed_path = None
+    processed = False
+    if 'processed_file' in request.files:
+        proc_file = request.files['processed_file']
+        if proc_file.filename != '':
+            proc_filename = "processed_sync_" + secure_filename(proc_file.filename)
+            processed_path = os.path.join(upload_dir, proc_filename)
+            proc_file.save(processed_path)
+            processed = True
+
+    duration = request.form.get("duration_seconds", 0, type=int)
+    transcription = request.form.get("transcription_text", "")
+    device_origin = request.form.get("device_origin", "Mobile App (Offline Sync)")
+    processing_time = request.form.get("processing_time_ms", 0, type=int)
+    
+    audio = Audio(
+        user_id=user_id,
+        filename=filename,
+        file_path=file_path,
+        size_bytes=os.path.getsize(file_path),
+        duration_seconds=duration,
+        device_origin=device_origin,
+        processed=processed,
+        processed_path=processed_path,
+        processing_time_ms=processing_time,
+        transcribed=bool(transcription),
+        transcription_text=transcription if transcription else None
+    )
+    db.session.add(audio)
+    
+    from app.models.other import Event
+    import json
+    sync_event = Event(
+        user_id=user_id,
+        event_type="AUDIO_SYNCED_OFFLINE",
+        level="info",
+        screen="audio_sync",
+        details_json=json.dumps({"filename": filename, "processed": processed, "transcribed": bool(transcription)})
+    )
+    db.session.add(sync_event)
+    db.session.commit()
+    
+    return jsonify({"audio": audio.to_dict(), "message": "Áudio sincronizado com sucesso (Offline Sync)"}), 201
 
 @audios_bp.route("/", methods=["GET"])
 @jwt_required()
@@ -261,3 +346,37 @@ def delete_audio(audio_id):
     db.session.delete(audio)
     db.session.commit()
     return jsonify({"message": "Áudio removido com sucesso"})
+
+
+@audios_bp.route("/batch-export", methods=["POST"])
+@jwt_required()
+def batch_export_audios():
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    audio_ids = data.get("audio_ids", [])
+    
+    if not audio_ids:
+        return jsonify({"error": "Nenhum áudio selecionado"}), 400
+        
+    audios = Audio.query.filter(Audio.id.in_(audio_ids), Audio.user_id == current_user_id).all()
+    
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for audio in audios:
+            # zip audio file
+            file_to_zip = audio.processed_path if (audio.processed and audio.processed_path) else audio.file_path
+            if file_to_zip and os.path.exists(file_to_zip):
+                zf.write(file_to_zip, arcname=f"audios/{audio.filename}")
+            
+            # zip transcription if exists
+            if getattr(audio, 'transcription_text', None):
+                txt_name = f"transcriptions/{os.path.splitext(audio.filename)[0]}.txt"
+                zf.writestr(txt_name, audio.transcription_text)
+                
+    memory_file.seek(0)
+    return send_file(
+        memory_file,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="calmwave_export.zip"
+    )

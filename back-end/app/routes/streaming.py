@@ -203,7 +203,11 @@ def handle_stop_stream():
                         # Transcribe audio
                         if transcribe_audio:
                             print("Transcribing streamed audio...")
-                            transcription_text = transcribe_audio(processed_path)
+                            from app.models.user import User
+                            user_record = User.query.get(user_id)
+                            lang = user_record.transcription_language if user_record and hasattr(user_record, 'transcription_language') and user_record.transcription_language else "pt-BR"
+                            
+                            transcription_text = transcribe_audio(processed_path, language=lang)
                             if transcription_text:
                                 audio.transcribed = True
                                 audio.transcription_text = transcription_text
