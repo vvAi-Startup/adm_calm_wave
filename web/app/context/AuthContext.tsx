@@ -36,11 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const login = async (email: string, password: string) => {
         const res = await authAPI.login(email, password);
         localStorage.setItem("calmwave_token", res.token);
+        if (res.refresh_token) {
+            localStorage.setItem("calmwave_refresh_token", res.refresh_token);
+        }
         setUser(res.user);
     };
 
     const logout = () => {
         localStorage.removeItem("calmwave_token");
+        localStorage.removeItem("calmwave_refresh_token");
         setUser(null);
         window.location.href = "/login";
     };

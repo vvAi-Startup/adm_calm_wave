@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from app.schemas.auth import LoginSchema, RegisterSchema
 from app import db
@@ -12,7 +12,10 @@ import json
 auth_bp = Blueprint("auth", __name__)
 
 
+from app import limiter
+
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("5 per minute")  # Rate limit contra brute force
 def login():
     try:
         data = LoginSchema().load(request.get_json() or {})
@@ -57,7 +60,8 @@ def login():
     db.session.commit()
 
     token = create_access_token(identity=str(user.id))
-    return jsonify({"token": token, "user": user.to_dict()}), 200
+    refresh_token = create_refresh_token(identity=str(user.id))
+    return jsonify({"token": token, "refresh_token": refresh_token, "user": user.to_dict()}), 200
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -92,7 +96,8 @@ def register():
     db.session.commit()
 
     token = create_access_token(identity=str(user.id))
-    return jsonify({"token": token, "user": user.to_dict()}), 201
+    refresh_token = create_refresh_token(identity=str(user.id))
+    return jsonify({"token": token, "refresh_token": refresh_token, "user": user.to_dict()}), 201
 
 
 @auth_bp.route("/me", methods=["GET"])
@@ -104,3 +109,10 @@ def me():
     if not user:
         return jsonify({"error": "Usuário não encontrado"}), 404
     return jsonify({"user": user.to_dict()}), 200
+
+@auth_bp.route("/refresh", methods=["POST"])
+@jwt_required(refresh=True)
+def refresh():
+    current_user_id = get_jwt_identity()
+    new_access_token = create_access_token(identity=current_user_id)
+    return jsonify({"token": new_access_token}), 200

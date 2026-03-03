@@ -25,14 +25,11 @@ export default function UsersPage() {
         setLoading(true);
         usersAPI.list({ page: currentPage })
             .then((res) => { 
-                if (res.users.length === 0) {
-                    setUsers(MOCK_USERS);
-                    setTotal(MOCK_USERS.length);
-                } else {
+                
                     setUsers(res.users); 
                     setTotal(res.total); 
                     setPages(res.pages); 
-                }
+                
             })
             .catch(() => { setUsers(MOCK_USERS); setTotal(MOCK_USERS.length); setPages(1); })
             .finally(() => setLoading(false));

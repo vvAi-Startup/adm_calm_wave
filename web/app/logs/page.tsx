@@ -4,16 +4,7 @@ import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
 import { eventsAPI, Event } from "../lib/api";
 
-const MOCK_EVENTS: Event[] = [
-    { id: 1, event_type: "USER_LOGIN", level: "info", created_at: "2026-02-24T19:35:00Z", screen: "auth", details_json: '{"email":"ana@calmwave.com"}' },
-    { id: 2, event_type: "AUDIO_PROCESSED", level: "info", created_at: "2026-02-24T19:30:00Z", screen: "audio", details_json: '{"audio_id":12,"duration":847}' },
-    { id: 3, event_type: "TRANSCRIPTION_FAILED", level: "error", created_at: "2026-02-24T19:15:00Z", screen: "audio", details_json: '{"audio_id":11,"reason":"timeout"}' },
-    { id: 4, event_type: "USER_REGISTERED", level: "info", created_at: "2026-02-24T18:45:00Z", screen: "auth", details_json: '{"email":"novo@email.com"}' },
-    { id: 5, event_type: "STREAMING_START", level: "info", created_at: "2026-02-24T18:30:00Z", screen: "streaming", details_json: '{"session_id":"ws_005"}' },
-    { id: 6, event_type: "HIGH_MEMORY_USAGE", level: "warn", created_at: "2026-02-24T18:00:00Z", screen: "system", details_json: '{"usage":"87%"}' },
-    { id: 7, event_type: "BACKUP_COMPLETED", level: "info", created_at: "2026-02-24T17:00:00Z", screen: "system", details_json: '{"size":"2.4GB"}' },
-    { id: 8, event_type: "DB_CONNECTION_ERROR", level: "error", created_at: "2026-02-24T16:30:00Z", screen: "system", details_json: '{"retries":3}' },
-];
+
 
 const levelBadge: Record<string, string> = {
     info: "badge-info",
@@ -33,13 +24,11 @@ export default function LogsPage() {
         setLoading(true);
         eventsAPI.list()
             .then((res) => {
-                if (res.events.length === 0) {
-                    setEvents(MOCK_EVENTS);
-                } else {
+                
                     setEvents(res.events);
-                }
+                
             })
-            .catch(() => setEvents(MOCK_EVENTS))
+            .catch((err) => { console.error(err); setEvents([]); })
             .finally(() => setLoading(false));
     };
 

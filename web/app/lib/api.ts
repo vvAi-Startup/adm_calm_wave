@@ -1,3 +1,4 @@
+import toast from "react-hot-toast";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 function getToken(): string | null {
@@ -16,10 +17,49 @@ async function fetchAPI<T>(
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  let res; 
+  try { 
+      res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers }); 
+  } catch (error) { 
+      // Não jogue toast em todas requisições de fundo, opcional
+      throw error; 
+  }
+
+  // Interceptor para Refresh Token
+  if (res.status === 401 && endpoint !== "/api/auth/login" && endpoint !== "/api/auth/refresh") {
+    const refreshToken = typeof window !== "undefined" ? localStorage.getItem("calmwave_refresh_token") : null;
+    if (refreshToken) {
+      try {
+        const refreshReq = await fetch(`${BASE_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${refreshToken}` }
+        });
+        if (refreshReq.ok) {
+          const refreshData = await refreshReq.json();
+          localStorage.setItem("calmwave_token", refreshData.token);
+          
+          // Refaz a requisição original com o novo token
+          headers["Authorization"] = `Bearer ${refreshData.token}`;
+          res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+        } else {
+          throw new Error("Refresh token expired");
+        }
+      } catch (err) {
+        localStorage.removeItem("calmwave_token");
+        localStorage.removeItem("calmwave_refresh_token");
+        window.location.href = "/login";
+        throw new Error("Unauthorized");
+      }
+    } else {
+      localStorage.removeItem("calmwave_token");
+      window.location.href = "/login";
+      throw new Error("Unauthorized");
+    }
+  }
 
   if (res.status === 401) {
     localStorage.removeItem("calmwave_token");
+    localStorage.removeItem("calmwave_refresh_token");
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -32,12 +72,12 @@ async function fetchAPI<T>(
 /* Auth */
 export const authAPI = {
   login: (email: string, password: string) =>
-    fetchAPI<{ token: string; user: User }>("/api/auth/login", {
+    fetchAPI<{ token: string; refresh_token?: string; user: User }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   register: (name: string, email: string, password: string) =>
-    fetchAPI<{ token: string; user: User }>("/api/auth/register", {
+    fetchAPI<{ token: string; refresh_token?: string; user: User }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ name, email, password }),
     }),
@@ -89,16 +129,45 @@ export const audiosAPI = {
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`${BASE_URL}/api/audios/upload`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
+    let res; 
+    try { 
+        res = await fetch(`${BASE_URL}/api/audios/upload`, {
+            method: "POST",
+            headers,
+            body: formData,
+        }); 
+    } catch (error) { 
+        toast.error("Falha de conexão com o servidor."); throw error; 
+    }
 
     if (res.status === 401) {
-      localStorage.removeItem("calmwave_token");
-      window.location.href = "/login";
-      throw new Error("Unauthorized");
+        const refreshToken = localStorage.getItem("calmwave_refresh_token");
+        if (refreshToken) {
+            const refreshReq = await fetch(`${BASE_URL}/api/auth/refresh`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${refreshToken}` }
+            });
+            if (refreshReq.ok) {
+                const refreshData = await refreshReq.json();
+                localStorage.setItem("calmwave_token", refreshData.token);
+                headers["Authorization"] = `Bearer ${refreshData.token}`;
+                res = await fetch(`${BASE_URL}/api/audios/upload`, {
+                    method: "POST",
+                    headers,
+                    body: formData,
+                });
+            } else {
+                localStorage.removeItem("calmwave_token");
+                localStorage.removeItem("calmwave_refresh_token");
+                window.location.href = "/login";
+                throw new Error("Unauthorized");
+            }
+        } else {
+            localStorage.removeItem("calmwave_token");
+            localStorage.removeItem("calmwave_refresh_token");
+            window.location.href = "/login";
+            throw new Error("Unauthorized");
+        }
     }
 
     const data = await res.json();

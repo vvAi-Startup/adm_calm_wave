@@ -20,7 +20,7 @@ def get_notifications():
 def mark_read(notification_id):
     current_user_id = get_jwt_identity()
     notification = Notification.query.get_or_404(notification_id)
-    if notification.user_id is not None and notification.user_id != current_user_id:
+    if notification.user_id is not None and str(notification.user_id) != str(current_user_id):
         return jsonify({"error": "Acesso nao autorizado"}), 403
     notification.is_read = True
     db.session.commit()

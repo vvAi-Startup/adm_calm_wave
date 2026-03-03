@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
       </head>
       <body>
         <AuthProvider>
+          <Toaster position="top-right" />
           <ProtectedRoute>{children}</ProtectedRoute>
         </AuthProvider>
       </body>

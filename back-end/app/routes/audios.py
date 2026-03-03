@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
+from app import db, socketio, socketio
 from app.models.audio import Audio
 import os
 import time
@@ -48,6 +48,16 @@ def upload_audio():
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "Nome de arquivo vazio"}), 400
+
+    # Security check: limit upload size and content if needed. (Already limited by app config generally, but we can enforce audio extension)
+    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg", ".aac")):
+        return jsonify({"error": "Formato não suportado."}), 400
+
+
+    # Security check: limit upload size and content if needed. (Already limited by app config generally, but we can enforce audio extension)
+    if not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg", ".aac")):
+        return jsonify({"error": "Formato não suportado."}), 400
+
         
     user_id = get_jwt_identity()
     
@@ -125,6 +135,10 @@ def upload_audio():
             db.session.add(success_event)
             db.session.commit()
             print(f"Audio processed successfully in {audio.processing_time_ms}ms")
+            # Emit websocket event
+            socketio.emit("audio_completed", {"audio_id": audio.id, "filename": audio.filename, "message": "Processamento concluído!"}, namespace="/")
+            # Emit websocket event
+            socketio.emit("audio_completed", {"audio_id": audio.id, "filename": audio.filename, "message": "Processamento concluído!"}, namespace="/")
             
         except Exception as e:
             import traceback

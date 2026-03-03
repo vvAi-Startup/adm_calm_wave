@@ -21,3 +21,4 @@ celery
 redis
 pytest
 pytest-flask
+Flask-Limiter
