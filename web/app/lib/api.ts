@@ -255,6 +255,7 @@ export interface User {
   last_access: string;
   active: boolean;
   account_type: string;
+  role?: string;
   settings?: {
     dark_mode: boolean;
     notifications_enabled: boolean;

@@ -5,11 +5,11 @@ import Header from "../components/Header";
 import { usersAPI, User } from "../lib/api";
 
 const MOCK_USERS: User[] = [
-    { id: 1, name: "Ana Souza", email: "ana@calmwave.com", account_type: "premium", active: true, created_at: "2026-01-15T10:00:00Z", last_access: "2026-02-24T18:30:00Z" },
-    { id: 2, name: "Bruno Lima", email: "bruno@email.com", account_type: "free", active: true, created_at: "2026-01-28T14:00:00Z", last_access: "2026-02-23T09:15:00Z" },
-    { id: 3, name: "Carla Mendes", email: "carla@email.com", account_type: "premium", active: true, created_at: "2026-02-01T08:30:00Z", last_access: "2026-02-24T11:00:00Z" },
-    { id: 4, name: "Diego Costa", email: "diego@email.com", account_type: "free", active: false, created_at: "2026-02-10T12:00:00Z", last_access: "2026-02-18T16:45:00Z" },
-    { id: 5, name: "Elisa Torres", email: "elisa@email.com", account_type: "admin", active: true, created_at: "2025-12-01T09:00:00Z", last_access: "2026-02-24T19:00:00Z" },
+    { id: 1, name: "Ana Souza", email: "ana@calmwave.com", account_type: "premium", role: "user", active: true, created_at: "2026-01-15T10:00:00Z", last_access: "2026-02-24T18:30:00Z" },
+    { id: 2, name: "Bruno Lima", email: "bruno@email.com", account_type: "free", role: "user", active: true, created_at: "2026-01-28T14:00:00Z", last_access: "2026-02-23T09:15:00Z" },
+    { id: 3, name: "Carla Mendes", email: "carla@email.com", account_type: "premium", role: "user", active: true, created_at: "2026-02-01T08:30:00Z", last_access: "2026-02-24T11:00:00Z" },
+    { id: 4, name: "Diego Costa", email: "diego@email.com", account_type: "free", role: "user", active: false, created_at: "2026-02-10T12:00:00Z", last_access: "2026-02-18T16:45:00Z" },
+    { id: 5, name: "Elisa Torres", email: "elisa@email.com", account_type: "premium", role: "super_admin", active: true, created_at: "2025-12-01T09:00:00Z", last_access: "2026-02-24T19:00:00Z" },
 ];
 
 export default function UsersPage() {
@@ -24,12 +24,12 @@ export default function UsersPage() {
     useEffect(() => {
         setLoading(true);
         usersAPI.list({ page: currentPage })
-            .then((res) => { 
-                
-                    setUsers(res.users); 
-                    setTotal(res.total); 
-                    setPages(res.pages); 
-                
+            .then((res) => {
+
+                setUsers(res.users);
+                setTotal(res.total);
+                setPages(res.pages);
+
             })
             .catch(() => { setUsers(MOCK_USERS); setTotal(MOCK_USERS.length); setPages(1); })
             .finally(() => setLoading(false));
@@ -46,6 +46,19 @@ export default function UsersPage() {
             alert("Erro ao atualizar status do usuário.");
             // Fallback for mock data
             setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, active: !u.active } : u));
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const changeRole = async (user: User, newRole: string) => {
+        setActionLoading(user.id);
+        try {
+            const res = await usersAPI.update(user.id, { role: newRole });
+            setUsers((prev) => prev.map((u) => u.id === user.id ? res.user : u));
+        } catch {
+            alert("Erro ou permissao negada para alterar o papel.");
+            setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));
         } finally {
             setActionLoading(null);
         }
@@ -78,7 +91,8 @@ export default function UsersPage() {
                                     <tr>
                                         <th>Usuário</th>
                                         <th>Email</th>
-                                        <th>Tipo</th>
+                                        <th>Plano</th>
+                                        <th>Papel</th>
                                         <th>Status</th>
                                         <th>Membro desde</th>
                                         <th>Último acesso</th>
@@ -98,18 +112,30 @@ export default function UsersPage() {
                                             </td>
                                             <td className="text-muted">{user.email}</td>
                                             <td>
-                                                <span className={`badge ${user.account_type === "premium" ? "badge-brand" : user.account_type === "admin" ? "badge-danger" : "badge-muted"}`}>
+                                                <span className={`badge ${user.account_type === "premium" ? "badge-brand" : "badge-muted"}`}>
                                                     {user.account_type}
                                                 </span>
+                                            </td>
+                                            <td>
+                                                <select
+                                                    value={user.role || "user"}
+                                                    onChange={(e) => changeRole(user, e.target.value)}
+                                                    disabled={actionLoading === user.id}
+                                                    style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--card-bg)" }}
+                                                >
+                                                    <option value="user">User</option>
+                                                    <option value="admin">Admin</option>
+                                                    <option value="super_admin">Super</option>
+                                                </select>
                                             </td>
                                             <td><span className={`badge ${user.active ? "badge-success" : "badge-danger"}`}><span className="badge-dot" />{user.active ? "Ativo" : "Inativo"}</span></td>
                                             <td className="text-muted">{new Date(user.created_at).toLocaleDateString("pt-BR")}</td>
                                             <td className="text-muted">{new Date(user.last_access).toLocaleDateString("pt-BR")}</td>
                                             <td>
                                                 <div style={{ display: "flex", gap: 6 }}>
-                                                    <button 
-                                                        className="btn-icon" 
-                                                        title={user.active ? "Desativar" : "Ativar"} 
+                                                    <button
+                                                        className="btn-icon"
+                                                        title={user.active ? "Desativar" : "Ativar"}
                                                         onClick={() => toggleStatus(user)}
                                                         disabled={actionLoading === user.id}
                                                         style={{ opacity: actionLoading === user.id ? 0.5 : 1 }}
@@ -123,12 +149,12 @@ export default function UsersPage() {
                                 </tbody>
                             </table>
                         </div>
-                        
+
                         {/* Pagination Controls */}
                         {pages > 1 && (
                             <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: 16, borderTop: "1px solid var(--border)" }}>
-                                <button 
-                                    className="btn btn-secondary btn-sm" 
+                                <button
+                                    className="btn btn-secondary btn-sm"
                                     disabled={currentPage === 1}
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 >
@@ -137,8 +163,8 @@ export default function UsersPage() {
                                 <span style={{ display: "flex", alignItems: "center", fontSize: 14 }}>
                                     Página {currentPage} de {pages}
                                 </span>
-                                <button 
-                                    className="btn btn-secondary btn-sm" 
+                                <button
+                                    className="btn btn-secondary btn-sm"
                                     disabled={currentPage === pages}
                                     onClick={() => setCurrentPage(p => Math.min(pages, p + 1))}
                                 >

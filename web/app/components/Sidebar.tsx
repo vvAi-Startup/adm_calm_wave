@@ -13,13 +13,16 @@ const navItems = [
     { href: "/support", icon: "💬", label: "Suporte (Inbox)", section: "Administração" },
     { href: "/analytics", icon: "📈", label: "Analytics", section: "Administração" },
     { href: "/status", icon: "🖥️", label: "Status", section: "Administração" },
-    { href: "/logs", icon: "📋", label: "Logs", section: "Administração" },
+    { href: "/logs", icon: "📋", label: "Logs do Sistema", section: "Administração" },
+    { href: "/admin/audit-logs", icon: "🔍", label: "Auditoria Admin", section: "Administração (Super)" },
+    { href: "/admin/notifications", icon: "🔔", label: "Notificar Todos", section: "Administração" },
     { href: "/achievements", icon: "🏆", label: "Conquistas", section: "Usuário" },
+    { href: "/settings/billing", icon: "💳", label: "Assinatura Planos", section: "Usuário" },
+    { href: "/settings/privacy", icon: "🔒", label: "Privacidade e LGPD", section: "Usuário" },
     { href: "/settings", icon: "⚙️", label: "Configurações", section: "Usuário" },
-    { href: "/privacy", icon: "🔒", label: "Privacidade", section: "Usuário" },
 ];
 
-const sections = ["Visão Geral", "Conteúdo", "Administração", "Usuário"];
+const sections = ["Visão Geral", "Conteúdo", "Administração", "Administração (Super)", "Usuário"];
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -37,6 +40,15 @@ export default function Sidebar() {
 
             {sections.map((section) => {
                 const items = navItems.filter((i) => i.section === section);
+
+                // Esconde a secao Super Admin para admins normais e usuarios normais
+                if (section === "Administração (Super)" && user?.role !== "super_admin") return null;
+
+                // Esconde secao de Administracao inteira para usuarios normais
+                if ((section === "Administração" || section === "Administração (Super)") && !["admin", "super_admin"].includes(user?.role || "")) return null;
+
+                if (items.length === 0) return null;
+
                 return (
                     <div key={section} className="sidebar-section">
                         <div className="sidebar-section-label">{section}</div>
@@ -61,7 +73,7 @@ export default function Sidebar() {
                     </div>
                     <div className="sidebar-user-info">
                         <div className="sidebar-user-name">{user?.name ?? "Admin"}</div>
-                        <div className="sidebar-user-role">{user?.account_type ?? "admin"} · Sair</div>
+                        <div className="sidebar-user-role">{user?.role ?? "admin"} ({user?.account_type}) · Sair</div>
                     </div>
                 </div>
             </div>

@@ -80,6 +80,7 @@ def register():
         email=data["email"],
         password_hash=pw_hash,
         account_type=data.get("account_type", "free"),
+        role="user",
     )
     db.session.add(user)
     db.session.flush() # Get user ID without committing yet

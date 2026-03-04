@@ -8,6 +8,7 @@ from flask_socketio import SocketIO
 from flask_swagger_ui import get_swaggerui_blueprint
 from dotenv import load_dotenv
 import os
+from sqlalchemy import inspect, text
 
 load_dotenv()
 
@@ -116,6 +117,8 @@ def create_app():
     from app.routes.playlists import playlists_bp
     from app.routes.admin import admin_bp
     from app.routes.support import support_bp
+    from app.routes.privacy import privacy_bp
+    from app.routes.billing import billing_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
@@ -127,9 +130,12 @@ def create_app():
     app.register_blueprint(playlists_bp, url_prefix="/api/playlists")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(support_bp, url_prefix="/api/support")
+    app.register_blueprint(privacy_bp, url_prefix="/api/privacy")
+    app.register_blueprint(billing_bp, url_prefix="/api/billing")
 
     with app.app_context():
         db.create_all()
+        _ensure_legacy_schema()
         _seed_admin()
 
     return app
@@ -146,7 +152,40 @@ def _seed_admin():
             email="admin@calmwave.com",
             password_hash=pw,
             name="Admin",
-            account_type="admin",
+            account_type="premium",
+            role="super_admin",
         )
         db.session.add(admin)
         db.session.commit()
+
+
+def _ensure_legacy_schema():
+    """Aplica ajustes mínimos de schema em bancos SQLite antigos."""
+    engine = db.engine
+    if engine.dialect.name != "sqlite":
+        return
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "users" not in tables:
+        return
+
+    current_columns = {col["name"] for col in inspector.get_columns("users")}
+    columns_to_add = [
+        ("profile_photo_url", "VARCHAR(500)"),
+        ("last_access", "DATETIME"),
+        ("active", "BOOLEAN DEFAULT 1"),
+        ("account_type", "VARCHAR(50) DEFAULT 'free'"),
+        ("role", "VARCHAR(50) DEFAULT 'user'"),
+        ("dark_mode", "BOOLEAN DEFAULT 0"),
+        ("notifications_enabled", "BOOLEAN DEFAULT 1"),
+        ("auto_process_audio", "BOOLEAN DEFAULT 1"),
+        ("audio_quality", "VARCHAR(20) DEFAULT 'high'"),
+    ]
+
+    for column_name, column_def in columns_to_add:
+        if column_name in current_columns:
+            continue
+        db.session.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_def}"))
+
+    db.session.commit()

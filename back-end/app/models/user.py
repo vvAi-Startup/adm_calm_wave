@@ -13,7 +13,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_access = db.Column(db.DateTime, default=datetime.utcnow)
     active = db.Column(db.Boolean, default=True)
-    account_type = db.Column(db.String(50), default="free")  # free, premium, admin
+    account_type = db.Column(db.String(50), default="free")  # free, premium
+    role = db.Column(db.String(50), default="user") # user, admin, super_admin
 
     # Settings
     dark_mode = db.Column(db.Boolean, default=False)
@@ -36,6 +37,7 @@ class User(db.Model):
             "last_access": self.last_access.isoformat() if self.last_access else None,
             "active": self.active,
             "account_type": self.account_type,
+            "role": self.role,
             "settings": {
                 "dark_mode": self.dark_mode,
                 "notifications_enabled": self.notifications_enabled,
