@@ -22,3 +22,6 @@ redis
 pytest
 pytest-flask
 Flask-Limiter
+gunicorn
+gunicorn
+psycopg2-binary
