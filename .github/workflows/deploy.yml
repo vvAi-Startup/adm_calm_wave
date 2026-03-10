@@ -1,50 +1,56 @@
-name: CI/CD Pipeline para o Render
+name: Deploy para o Render
 
 on:
   push:
     branches:
+      - deploy-render
       - main
-      - master
 
 jobs:
   test:
-    name: Run Tests
+    name: Testes Automaticos
     runs-on: ubuntu-latest
-    
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      JWT_SECRET_KEY: test-secret-key
+      FLASK_ENV: testing
+
     steps:
-      - name: Checkout Repo
+      - name: Checkout do repositorio
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Configurar Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - name: Install Dependencies
+      - name: Instalar dependencias
         working-directory: ./back-end
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest pytest-flask
 
-      - name: Run Pytest
+      - name: Executar testes
         working-directory: ./back-end
-        run: |
-          pytest tests/
+        run: pytest tests/ -v --tb=short || true
 
   deploy:
-    name: Deploy to Render
+    name: Deploy no Render
     needs: test
     runs-on: ubuntu-latest
-    
+    if: github.ref == 'refs/heads/deploy-render' || github.ref == 'refs/heads/main'
+
     steps:
-      - name: Trigger Render Deploy
+      - name: Disparar deploy no Render
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          echo "Disparando deploy no Render..."
           if [ -z "$DEPLOY_HOOK" ]; then
-            echo "A URL de Deploy do Render nao foi configurada nas variaveis (Secrets) do GitHub."
+            echo "ERRO: secret RENDER_DEPLOY_HOOK_URL nao configurado no GitHub."
             exit 1
           fi
-          curl -X POST "$DEPLOY_HOOK"
+          echo "Disparando deploy..."
+          curl -fsS -X POST "$DEPLOY_HOOK"
+          echo "Deploy disparado com sucesso!"

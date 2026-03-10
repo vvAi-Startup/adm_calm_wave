@@ -1,42 +1,61 @@
 services:
-  # 1. Banco Redis para o Celery (Background Worker)
+  # 1. Redis para o Celery
   - type: redis
     name: calm-wave-redis
-    ipAllowList: [] # a rede interna do Render acessará automaticamente
     plan: free
+    ipAllowList: []
 
-  # 2. Sua API principal (Flask + WebSockets)
+  # 2. API principal (Flask + WebSockets + Supabase)
   - type: web
     name: calm-wave-api
     env: python
     region: ohio
     plan: starter
     rootDir: back-end
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn --worker-class eventlet -w 1 run:app"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 --timeout 120 run:app
+    healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.10.14"
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "0"
       - key: REDIS_URL
         fromService:
           type: redis
           name: calm-wave-redis
           property: connectionString
-      - key: PYTHON_VERSION
-        value: 3.10.0
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
 
-  # 3. Background Worker do Celery (processamento das filas)
+  # 3. Worker Celery (processamento de filas de audio)
   - type: worker
     name: calm-wave-celery-worker
     env: python
     region: ohio
     plan: starter
     rootDir: back-end
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "celery -A run.celery worker --loglevel=info"
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A run.celery worker --loglevel=info
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.10.14"
       - key: REDIS_URL
         fromService:
           type: redis
           name: calm-wave-redis
           property: connectionString
-      - key: PYTHON_VERSION
-        value: 3.10.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
