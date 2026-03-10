@@ -1,29 +1,25 @@
 import json
-from app import db
-from app.models.other import Notification
+from app.supabase_ext import supabase
+
 
 class PushService:
     @staticmethod
     def send_push_notification(user_id, title, message, data_payload=None):
         """
-        Simula o envio de uma notificação Push (ex: via Firebase Cloud Messaging - FCM)
-        para o dispositivo móvel do usuário e salva no banco de dados.
+        Simula envio de notificacao Push e salva no Supabase.
         """
-        
-        # 1. Salvar no banco de dados para histórico/painel web
-        new_notification = Notification(
-            user_id=user_id,
-            title=title,
-            message=message,
-            type="PUSH",
-            is_read=False
-        )
-        db.session.add(new_notification)
-        db.session.commit()
-        
-        # 2. Mock do envio real via SDK do FCM ou similar.
+        try:
+            supabase.table('notifications').insert({
+                "user_id": user_id,
+                "title": title,
+                "message": message,
+                "type": "PUSH",
+                "is_read": False,
+            }).execute()
+        except Exception as e:
+            print(f"[PUSH] Erro ao salvar notificacao: {e}")
+
         print(f"[PUSH MOCK] Enviando para User {user_id}: {title} - {message}")
         if data_payload:
-            print(f"[PUSH MOCK] Payload oculto: {json.dumps(data_payload)}")
-            
+            print(f"[PUSH MOCK] Payload: {json.dumps(data_payload)}")
         return True

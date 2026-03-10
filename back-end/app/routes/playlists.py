@@ -1,267 +1,188 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from app.models.other import Playlist
-from app.models.user import User
-from app.models.audio import Audio
-from app.models.other import Event
-from datetime import datetime
+from app.supabase_ext import supabase
 import json
 
 playlists_bp = Blueprint("playlists", __name__)
 
 
+def _playlist_with_count(p):
+    count = supabase.table('audios').select('id', count='exact').eq('playlist_id', p['id']).execute().count or 0
+    p['total_audios'] = count
+    return p
+
+
 @playlists_bp.route("/", methods=["GET"])
 @jwt_required()
 def list_playlists():
-    """List all playlists of the current user"""
     current_user_id = get_jwt_identity()
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
+    offset = (page - 1) * per_page
 
-    pagination = Playlist.query.filter_by(user_id=current_user_id).order_by(
-        Playlist.order.asc()
-    ).paginate(page=page, per_page=per_page, error_out=False)
+    resp = supabase.table('playlists').select('*', count='exact').eq('user_id', current_user_id).order('order', desc=False).range(offset, offset + per_page - 1).execute()
+    total = resp.count or 0
+    playlists = [_playlist_with_count(p) for p in (resp.data or [])]
 
-    return jsonify(
-        {
-            "playlists": [p.to_dict() for p in pagination.items],
-            "total": pagination.total,
-            "pages": pagination.pages,
-            "page": page,
-        }
-    )
+    return jsonify({
+        "playlists": playlists,
+        "total": total,
+        "pages": (total + per_page - 1) // per_page if total > 0 else 1,
+        "page": page,
+    })
 
 
 @playlists_bp.route("/", methods=["POST"])
 @jwt_required()
 def create_playlist():
-    """Create a new playlist"""
     current_user_id = get_jwt_identity()
     data = request.get_json()
-
     if not data or "name" not in data:
-        return jsonify({"error": "Nome da playlist é obrigatório"}), 400
+        return jsonify({"error": "Nome da playlist e obrigatorio"}), 400
 
-    # Get the next order value
-    last_playlist = (
-        Playlist.query.filter_by(user_id=current_user_id)
-        .order_by(Playlist.order.desc())
-        .first()
-    )
-    next_order = (last_playlist.order + 1) if last_playlist else 0
+    last = supabase.table('playlists').select('order').eq('user_id', current_user_id).order('order', desc=True).limit(1).execute()
+    next_order = (last.data[0]['order'] + 1) if last.data else 0
 
-    playlist = Playlist(
-        user_id=current_user_id,
-        name=data["name"],
-        color=data.get("color", "#6FAF9E"),
-        order=next_order,
-    )
-    db.session.add(playlist)
+    resp = supabase.table('playlists').insert({
+        "user_id": current_user_id,
+        "name": data["name"],
+        "color": data.get("color", "#6FAF9E"),
+        "order": next_order,
+    }).execute()
+    playlist = _playlist_with_count(resp.data[0])
 
-    # Log event
-    create_event = Event(
-        user_id=current_user_id,
-        event_type="PLAYLIST_CREATED",
-        level="info",
-        screen="playlists",
-        details_json=json.dumps({"playlist_name": data["name"]}),
-    )
-    db.session.add(create_event)
-    db.session.commit()
-
-    return jsonify({"playlist": playlist.to_dict()}), 201
+    supabase.table('events').insert({
+        "user_id": current_user_id,
+        "event_type": "PLAYLIST_CREATED",
+        "level": "info",
+        "screen": "playlists",
+        "details_json": json.dumps({"playlist_name": data["name"]}),
+    }).execute()
+    return jsonify({"playlist": playlist}), 201
 
 
 @playlists_bp.route("/<int:playlist_id>", methods=["GET"])
 @jwt_required()
 def get_playlist(playlist_id):
-    """Get a specific playlist with its audios"""
     current_user_id = get_jwt_identity()
-    playlist = Playlist.query.filter_by(
-        id=playlist_id, user_id=current_user_id
-    ).first_or_404()
-
-    playlist_data = playlist.to_dict()
-    # Get audios in this playlist
-    audios = Audio.query.filter_by(playlist_id=playlist_id).all()
-    playlist_data["audios"] = [a.to_dict() for a in audios]
-
-    return jsonify({"playlist": playlist_data})
+    resp = supabase.table('playlists').select('*').eq('id', playlist_id).eq('user_id', current_user_id).execute()
+    if not resp.data:
+        return jsonify({"error": "Playlist nao encontrada"}), 404
+    playlist = _playlist_with_count(resp.data[0])
+    playlist["audios"] = supabase.table('audios').select('*').eq('playlist_id', playlist_id).execute().data or []
+    return jsonify({"playlist": playlist})
 
 
 @playlists_bp.route("/<int:playlist_id>", methods=["PUT"])
 @jwt_required()
 def update_playlist(playlist_id):
-    """Update a playlist"""
     current_user_id = get_jwt_identity()
-    playlist = Playlist.query.filter_by(
-        id=playlist_id, user_id=current_user_id
-    ).first_or_404()
+    resp = supabase.table('playlists').select('*').eq('id', playlist_id).eq('user_id', current_user_id).execute()
+    if not resp.data:
+        return jsonify({"error": "Playlist nao encontrada"}), 404
+    old = resp.data[0]
     data = request.get_json()
-
-    changes = {}
-    if "name" in data and playlist.name != data["name"]:
-        changes["name"] = {"old": playlist.name, "new": data["name"]}
-        playlist.name = data["name"]
-
-    if "color" in data and playlist.color != data["color"]:
-        changes["color"] = {"old": playlist.color, "new": data["color"]}
-        playlist.color = data["color"]
-
-    if "order" in data and playlist.order != data["order"]:
-        changes["order"] = {"old": playlist.order, "new": data["order"]}
-        playlist.order = data["order"]
-
+    changes, update_data = {}, {}
+    for field in ['name', 'color', 'order']:
+        if field in data and old.get(field) != data[field]:
+            changes[field] = {"old": old.get(field), "new": data[field]}
+            update_data[field] = data[field]
+    if update_data:
+        supabase.table('playlists').update(update_data).eq('id', playlist_id).execute()
     if changes:
-        update_event = Event(
-            user_id=current_user_id,
-            event_type="PLAYLIST_UPDATED",
-            level="info",
-            screen="playlists",
-            details_json=json.dumps({"playlist_id": playlist_id, "changes": changes}),
-        )
-        db.session.add(update_event)
-
-    db.session.commit()
-    return jsonify({"playlist": playlist.to_dict()})
+        supabase.table('events').insert({
+            "user_id": current_user_id,
+            "event_type": "PLAYLIST_UPDATED",
+            "level": "info",
+            "screen": "playlists",
+            "details_json": json.dumps({"playlist_id": playlist_id, "changes": changes}),
+        }).execute()
+    updated = supabase.table('playlists').select('*').eq('id', playlist_id).execute().data[0]
+    return jsonify({"playlist": _playlist_with_count(updated)})
 
 
 @playlists_bp.route("/<int:playlist_id>", methods=["DELETE"])
 @jwt_required()
 def delete_playlist(playlist_id):
-    """Delete a playlist"""
     current_user_id = get_jwt_identity()
-    playlist = Playlist.query.filter_by(
-        id=playlist_id, user_id=current_user_id
-    ).first_or_404()
-
-    # Remove all audios from this playlist
-    Audio.query.filter_by(playlist_id=playlist_id).update({"playlist_id": None})
-
-    db.session.delete(playlist)
-
-    # Log event
-    delete_event = Event(
-        user_id=current_user_id,
-        event_type="PLAYLIST_DELETED",
-        level="warn",
-        screen="playlists",
-        details_json=json.dumps({"playlist_id": playlist_id, "name": playlist.name}),
-    )
-    db.session.add(delete_event)
-    db.session.commit()
-
+    resp = supabase.table('playlists').select('*').eq('id', playlist_id).eq('user_id', current_user_id).execute()
+    if not resp.data:
+        return jsonify({"error": "Playlist nao encontrada"}), 404
+    name = resp.data[0]['name']
+    supabase.table('audios').update({"playlist_id": None}).eq('playlist_id', playlist_id).execute()
+    supabase.table('playlists').delete().eq('id', playlist_id).execute()
+    supabase.table('events').insert({
+        "user_id": current_user_id,
+        "event_type": "PLAYLIST_DELETED",
+        "level": "warn",
+        "screen": "playlists",
+        "details_json": json.dumps({"playlist_id": playlist_id, "name": name}),
+    }).execute()
     return jsonify({"message": "Playlist removida com sucesso"})
 
 
 @playlists_bp.route("/<int:playlist_id>/add-audio/<int:audio_id>", methods=["POST"])
 @jwt_required()
 def add_audio_to_playlist(playlist_id, audio_id):
-    """Add an audio to a playlist"""
     current_user_id = get_jwt_identity()
-    playlist = Playlist.query.filter_by(
-        id=playlist_id, user_id=current_user_id
-    ).first_or_404()
-    audio = Audio.query.filter_by(id=audio_id, user_id=current_user_id).first_or_404()
-
-    if audio.playlist_id == playlist_id:
-        return jsonify({"error": "Áudio já está nesta playlist"}), 400
-
-    # Remove from old playlist if necessary
-    old_playlist_id = audio.playlist_id
-    audio.playlist_id = playlist_id
-    db.session.commit()
-
-    # Log event
-    add_event = Event(
-        user_id=current_user_id,
-        event_type="AUDIO_ADDED_TO_PLAYLIST",
-        level="info",
-        screen="playlists",
-        details_json=json.dumps(
-            {
-                "audio_id": audio_id,
-                "playlist_id": playlist_id,
-                "old_playlist_id": old_playlist_id,
-            }
-        ),
-    )
-    db.session.add(add_event)
-    db.session.commit()
-
-    return jsonify({"audio": audio.to_dict()})
+    if not supabase.table('playlists').select('id').eq('id', playlist_id).eq('user_id', current_user_id).execute().data:
+        return jsonify({"error": "Playlist nao encontrada"}), 404
+    a_resp = supabase.table('audios').select('*').eq('id', audio_id).eq('user_id', current_user_id).execute()
+    if not a_resp.data:
+        return jsonify({"error": "Audio nao encontrado"}), 404
+    audio = a_resp.data[0]
+    if audio.get('playlist_id') == playlist_id:
+        return jsonify({"error": "Audio ja esta nesta playlist"}), 400
+    old_playlist_id = audio.get('playlist_id')
+    supabase.table('audios').update({"playlist_id": playlist_id}).eq('id', audio_id).execute()
+    supabase.table('events').insert({
+        "user_id": current_user_id,
+        "event_type": "AUDIO_ADDED_TO_PLAYLIST",
+        "level": "info",
+        "screen": "playlists",
+        "details_json": json.dumps({"audio_id": audio_id, "playlist_id": playlist_id, "old_playlist_id": old_playlist_id}),
+    }).execute()
+    updated = supabase.table('audios').select('*').eq('id', audio_id).execute().data[0]
+    return jsonify({"audio": updated})
 
 
 @playlists_bp.route("/<int:playlist_id>/remove-audio/<int:audio_id>", methods=["POST"])
 @jwt_required()
 def remove_audio_from_playlist(playlist_id, audio_id):
-    """Remove an audio from a playlist"""
     current_user_id = get_jwt_identity()
-    playlist = Playlist.query.filter_by(
-        id=playlist_id, user_id=current_user_id
-    ).first_or_404()
-    audio = Audio.query.filter_by(
-        id=audio_id, user_id=current_user_id, playlist_id=playlist_id
-    ).first_or_404()
+    if not supabase.table('playlists').select('id').eq('id', playlist_id).eq('user_id', current_user_id).execute().data:
+        return jsonify({"error": "Playlist nao encontrada"}), 404
+    if not supabase.table('audios').select('id').eq('id', audio_id).eq('user_id', current_user_id).eq('playlist_id', playlist_id).execute().data:
+        return jsonify({"error": "Audio nao encontrado nesta playlist"}), 404
+    supabase.table('audios').update({"playlist_id": None}).eq('id', audio_id).execute()
+    supabase.table('events').insert({
+        "user_id": current_user_id,
+        "event_type": "AUDIO_REMOVED_FROM_PLAYLIST",
+        "level": "info",
+        "screen": "playlists",
+        "details_json": json.dumps({"audio_id": audio_id, "playlist_id": playlist_id}),
+    }).execute()
+    return jsonify({"message": "Audio removido da playlist"})
 
-    audio.playlist_id = None
-    db.session.commit()
-
-    # Log event
-    remove_event = Event(
-        user_id=current_user_id,
-        event_type="AUDIO_REMOVED_FROM_PLAYLIST",
-        level="info",
-        screen="playlists",
-        details_json=json.dumps({"audio_id": audio_id, "playlist_id": playlist_id}),
-    )
-    db.session.add(remove_event)
-    db.session.commit()
-
-    return jsonify({"message": "Áudio removido da playlist"})
 
 @playlists_bp.route("/sync", methods=["POST"])
 @jwt_required()
 def sync_playlists():
-    """Sincroniza playlists criadas offline no mobile"""
     current_user_id = get_jwt_identity()
     data = request.get_json()
-    
     if not data or not isinstance(data.get("playlists"), list):
-        return jsonify({"error": "Formato inválido. 'playlists' deve ser uma lista"}), 400
-        
-    created_count = 0
-    updated_count = 0
-    
+        return jsonify({"error": "Formato invalido. 'playlists' deve ser uma lista"}), 400
+    created_count = updated_count = 0
     for p_data in data["playlists"]:
         name = p_data.get("name")
         if not name:
             continue
-            
-        color = p_data.get("color", "#6FAF9E")
-        order = p_data.get("order", 0)
-        
-        existing = Playlist.query.filter_by(user_id=current_user_id, name=name).first()
-        
-        if existing:
-            existing.color = color
-            existing.order = order
+        color, order = p_data.get("color", "#6FAF9E"), p_data.get("order", 0)
+        existing = supabase.table('playlists').select('id').eq('user_id', current_user_id).eq('name', name).execute()
+        if existing.data:
+            supabase.table('playlists').update({"color": color, "order": order}).eq('id', existing.data[0]['id']).execute()
             updated_count += 1
         else:
-            new_playlist = Playlist(
-                user_id=current_user_id,
-                name=name,
-                color=color,
-                order=order
-            )
-            db.session.add(new_playlist)
+            supabase.table('playlists').insert({"user_id": current_user_id, "name": name, "color": color, "order": order}).execute()
             created_count += 1
-            
-    db.session.commit()
-    
-    return jsonify({
-        "message": "Sincronização concluída",
-        "created": created_count,
-        "updated": updated_count
-    }), 200
+    return jsonify({"message": "Sincronizacao concluida", "created": created_count, "updated": updated_count}), 200

@@ -1,0 +1,42 @@
+services:
+  # 1. Banco Redis para o Celery (Background Worker)
+  - type: redis
+    name: calm-wave-redis
+    ipAllowList: [] # a rede interna do Render acessará automaticamente
+    plan: free
+
+  # 2. Sua API principal (Flask + WebSockets)
+  - type: web
+    name: calm-wave-api
+    env: python
+    region: ohio
+    plan: starter
+    rootDir: back-end
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn --worker-class eventlet -w 1 run:app"
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: calm-wave-redis
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.10.0
+
+  # 3. Background Worker do Celery (processamento das filas)
+  - type: worker
+    name: calm-wave-celery-worker
+    env: python
+    region: ohio
+    plan: starter
+    rootDir: back-end
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "celery -A run.celery worker --loglevel=info"
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: calm-wave-redis
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.10.0
