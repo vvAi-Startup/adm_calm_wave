@@ -33,6 +33,8 @@ def create_app():
     CORS(app, resources={r"/api/*": {"origins": [frontend_url, "http://localhost:5000"]}})
 
     db.init_app(app)
+    from app.supabase_ext import init_supabase
+    init_supabase(app)
     jwt.init_app(app)
     socketio.init_app(app)
     limiter.init_app(app)
@@ -134,58 +136,27 @@ def create_app():
     app.register_blueprint(billing_bp, url_prefix="/api/billing")
 
     with app.app_context():
-        db.create_all()
-        _ensure_legacy_schema()
         _seed_admin()
 
     return app
 
 
 def _seed_admin():
-    """Cria admin padrão se não existir."""
-    from app.models.user import User
+    """Cria admin padrão via Supabase se não existir."""
     import bcrypt
-
-    if not User.query.filter_by(email="admin@calmwave.com").first():
-        pw = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
-        admin = User(
-            email="admin@calmwave.com",
-            password_hash=pw,
-            name="Admin",
-            account_type="premium",
-            role="super_admin",
-        )
-        db.session.add(admin)
-        db.session.commit()
-
-
-def _ensure_legacy_schema():
-    """Aplica ajustes mínimos de schema em bancos SQLite antigos."""
-    engine = db.engine
-    if engine.dialect.name != "sqlite":
+    from app.supabase_ext import supabase
+    if supabase is None:
         return
-
-    inspector = inspect(engine)
-    tables = set(inspector.get_table_names())
-    if "users" not in tables:
-        return
-
-    current_columns = {col["name"] for col in inspector.get_columns("users")}
-    columns_to_add = [
-        ("profile_photo_url", "VARCHAR(500)"),
-        ("last_access", "DATETIME"),
-        ("active", "BOOLEAN DEFAULT 1"),
-        ("account_type", "VARCHAR(50) DEFAULT 'free'"),
-        ("role", "VARCHAR(50) DEFAULT 'user'"),
-        ("dark_mode", "BOOLEAN DEFAULT 0"),
-        ("notifications_enabled", "BOOLEAN DEFAULT 1"),
-        ("auto_process_audio", "BOOLEAN DEFAULT 1"),
-        ("audio_quality", "VARCHAR(20) DEFAULT 'high'"),
-    ]
-
-    for column_name, column_def in columns_to_add:
-        if column_name in current_columns:
-            continue
-        db.session.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_def}"))
-
-    db.session.commit()
+    try:
+        existing = supabase.table('users').select('id').eq('email', 'admin@calmwave.com').execute()
+        if not existing.data:
+            pw = bcrypt.hashpw(b'admin123', bcrypt.gensalt()).decode()
+            supabase.table('users').insert({
+                'email': 'admin@calmwave.com',
+                'password_hash': pw,
+                'name': 'Admin',
+                'account_type': 'premium',
+                'role': 'super_admin',
+            }).execute()
+    except BaseException as e:
+        print(f'[seed_admin] Aviso: nao foi possivel verificar/criar admin - {type(e).__name__}: {e}')
