@@ -1,216 +1,147 @@
-﻿from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required
-from app import db
-from app.models.user import User
-from app.models.audio import Audio
-from app.models.other import Event
+from app.supabase_ext import supabase
 from datetime import datetime, timedelta
-from sqlalchemy import func
+import time, random
 
 stats_bp = Blueprint("stats", __name__)
+
+
+def _count(table, **filters):
+    q = supabase.table(table).select('*', count='exact')
+    for k, v in filters.items():
+        q = q.eq(k, v)
+    return q.execute().count or 0
 
 
 @stats_bp.route("/dashboard", methods=["GET"])
 @jwt_required()
 def dashboard():
-    total_audios = Audio.query.count()
-    total_users = User.query.filter_by(active=True).count()
-    processed_audios = Audio.query.filter_by(processed=True).count()
+    total_audios = _count('audios')
+    total_users = _count('users', active=True)
+    processed_audios = _count('audios', processed=True)
     total_processed_pct = round((processed_audios / total_audios * 100) if total_audios else 0, 1)
 
-    # Áudios dos últimos 7 dias
-    week_ago = datetime.utcnow() - timedelta(days=7)
-    recent_audios = Audio.query.filter(Audio.recorded_at >= week_ago).count()
+    week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    recent_audios = supabase.table('audios').select('*', count='exact').gte('recorded_at', week_ago).execute().count or 0
+    last_uploads = supabase.table('audios').select('*').order('recorded_at', desc=True).limit(5).execute().data or []
 
-    # Últimos uploads
-    last_uploads = Audio.query.order_by(Audio.recorded_at.desc()).limit(5).all()
-
-    # Get active streaming sessions count
     from app.routes.streaming import active_sessions
     streaming_sessions_count = len(active_sessions)
 
-    # Contagem diária últimos 7 dias
     daily_counts = []
     for i in range(6, -1, -1):
         day = datetime.utcnow() - timedelta(days=i)
         day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
-        count = Audio.query.filter(
-            Audio.recorded_at >= day_start, Audio.recorded_at < day_end
-        ).count()
-        daily_counts.append({"day": day.strftime("%a"), "count": count})
+        cnt = supabase.table('audios').select('*', count='exact').gte('recorded_at', day_start.isoformat()).lt('recorded_at', day_end.isoformat()).execute().count or 0
+        daily_counts.append({"day": day.strftime("%a"), "count": cnt})
 
-    return jsonify(
-        {
-            "total_audios": total_audios,
-            "total_users": total_users,
-            "processed_audios": processed_audios,
-            "processed_pct": total_processed_pct,
-            "recent_audios_week": recent_audios,
-            "streaming_sessions": streaming_sessions_count,
-            "system_status": "Operacional",
-            "daily_counts": daily_counts,
-            "last_uploads": [a.to_dict() for a in last_uploads],
-        }
-    )
+    return jsonify({
+        "total_audios": total_audios, "total_users": total_users,
+        "processed_audios": processed_audios, "processed_pct": total_processed_pct,
+        "recent_audios_week": recent_audios, "streaming_sessions": streaming_sessions_count,
+        "system_status": "Operacional", "daily_counts": daily_counts, "last_uploads": last_uploads,
+    })
 
 
 @stats_bp.route("/analytics", methods=["GET"])
 @jwt_required()
 def analytics():
-    total_users = User.query.count()
-    active_users = User.query.filter_by(active=True).count()
-    total_audios = Audio.query.count()
-    favorite_audios = Audio.query.filter_by(favorite=True).count()
-    transcribed_audios = Audio.query.filter_by(transcribed=True).count()
+    total_users = _count('users')
+    active_users = _count('users', active=True)
+    total_audios = _count('audios')
+    favorite_audios = _count('audios', favorite=True)
+    transcribed_audios = _count('audios', transcribed=True)
 
-    # Crescimento mensal fictício mas baseado em dados reais
     months = []
     for i in range(5, -1, -1):
-        month_start = (datetime.utcnow().replace(day=1) - timedelta(days=30 * i))
-        month_end = month_start + timedelta(days=30)
-        count = User.query.filter(
-            User.created_at >= month_start, User.created_at < month_end
-        ).count()
-        months.append({"month": month_start.strftime("%b"), "users": count})
+        ms = (datetime.utcnow().replace(day=1) - timedelta(days=30 * i))
+        me = ms + timedelta(days=30)
+        cnt = supabase.table('users').select('*', count='exact').gte('created_at', ms.isoformat()).lt('created_at', me.isoformat()).execute().count or 0
+        months.append({"month": ms.strftime("%b"), "users": cnt})
 
-    # Funcionalidades mais usadas (baseado em events)
-    # In a real app, this would query the Event table
-    # For now, we'll calculate based on actual audio stats
-    total_processed = Audio.query.filter_by(processed=True).count()
-    total_transcribed = Audio.query.filter_by(transcribed=True).count()
-    total_favorites = Audio.query.filter_by(favorite=True).count()
-    
+    total_processed = _count('audios', processed=True)
+    total_transcribed = _count('audios', transcribed=True)
+    total_favorites = _count('audios', favorite=True)
+    offline_syncs = _count('events', event_type='AUDIO_SYNCED_OFFLINE')
     total_events = max(total_audios, 1)
-    def calc_pct(val):
-        return int((val / total_events) * 100)
-        
-    offline_syncs = Event.query.filter_by(event_type="AUDIO_SYNCED_OFFLINE").count()
-    
-    features = [
-        {"name": "Gravar Áudio", "usage": calc_pct(total_audios) or 100},
-        {"name": "Limpar Ruído", "usage": calc_pct(total_processed)},
-        {"name": "Transcrever", "usage": calc_pct(total_transcribed)},
-        {"name": "Marcar Favorito", "usage": calc_pct(total_favorites)},
-        {"name": "Sincronização Offline", "usage": calc_pct(offline_syncs)},
-        {"name": "Criar Playlist", "usage": calc_pct(int(total_audios * 0.3))},
-    ]
-    
-    # Sort by usage
-    features = sorted(features, key=lambda x: x["usage"], reverse=True)
 
-    # Dispositivos integrados c/ banco (se existirem, senão mock)
+    def pct(v): return int((v / total_events) * 100)
+
+    features = sorted([
+        {"name": "Gravar Audio", "usage": pct(total_audios) or 100},
+        {"name": "Limpar Ruido", "usage": pct(total_processed)},
+        {"name": "Transcrever", "usage": pct(total_transcribed)},
+        {"name": "Marcar Favorito", "usage": pct(total_favorites)},
+        {"name": "Sincronizacao Offline", "usage": pct(offline_syncs)},
+        {"name": "Criar Playlist", "usage": pct(int(total_audios * 0.3))},
+    ], key=lambda x: x["usage"], reverse=True)
+
     device_performance = [
         {"device": "Samsung S23", "time": "0.15s", "pct": 90},
         {"device": "Xiaomi Redmi Note 11", "time": "0.25s", "pct": 70},
-        {"device": "Motorola Moto G8", "time": "0.45s", "pct": 45}
+        {"device": "Motorola Moto G8", "time": "0.45s", "pct": 45},
     ]
     try:
-        from app.models.user import UserDevice
-        device_counts = db.session.query(UserDevice.device_name, func.count(UserDevice.id)).group_by(UserDevice.device_name).order_by(func.count(UserDevice.id).desc()).limit(3).all()
-        if device_counts:
-            mock_times = [("0.15s", 90), ("0.25s", 70), ("0.45s", 45)]
-            real_devices = []
-            for i, d in enumerate(device_counts):
-                device_name = d[0] if d[0] else f"Device {i+1}"
-                time_val, pct = mock_times[i] if i < len(mock_times) else ("0.50s", 30)
-                real_devices.append({"device": device_name, "time": time_val, "pct": pct})
-            while len(real_devices) < 3:
-                real_devices.append(device_performance[len(real_devices)])
-            device_performance = real_devices
+        from collections import Counter
+        dev_data = supabase.table('user_devices').select('device_name').execute().data or []
+        if dev_data:
+            counts = Counter(d.get('device_name', 'Unknown') for d in dev_data).most_common(3)
+            mock_t = [("0.15s", 90), ("0.25s", 70), ("0.45s", 45)]
+            device_performance = [{"device": n, "time": mock_t[i][0], "pct": mock_t[i][1]} for i, (n, _) in enumerate(counts)]
+            while len(device_performance) < 3:
+                device_performance.append({"device": "Samsung S23", "time": "0.15s", "pct": 90})
     except Exception:
         pass
 
-    # Lógica de Retenção dinamicamente segura
-    r_day1 = 80 if active_users > 0 else 0
-    r_day7 = 50 if active_users > 0 else 0
-    r_day30 = 30 if active_users > 0 else 0
+    r1, r7, r30 = (80, 50, 30) if active_users > 0 else (0, 0, 0)
+    return jsonify({
+        "total_active_users": active_users, "total_users": total_users,
+        "session_duration": "4m 32s", "bounce_rate": 42.8,
+        "total_audios": total_audios, "favorite_audios": favorite_audios, "transcribed_audios": transcribed_audios,
+        "user_growth": months, "features_usage": features, "device_performance": device_performance,
+        "retention": [{"day": "Dia 1", "rate": r1}, {"day": "Dia 7", "rate": r7}, {"day": "Dia 30", "rate": r30}],
+    })
 
-    return jsonify(
-        {
-            "total_active_users": active_users,
-            "total_users": total_users,
-            "session_duration": "4m 32s",
-            "bounce_rate": 42.8,
-            "total_audios": total_audios,
-            "favorite_audios": favorite_audios,
-            "transcribed_audios": transcribed_audios,
-            "user_growth": months,
-            "features_usage": features,
-            "device_performance": device_performance,
-            "retention": [
-                {"day": "Dia 1", "rate": r_day1},
-                {"day": "Dia 7", "rate": r_day7},
-                {"day": "Dia 30", "rate": r_day30},
-            ],
-        }
-    )
 
 @stats_bp.route("/status", methods=["GET"])
 @jwt_required()
 def system_status():
-    import time
-    import random
-    from sqlalchemy import text
-    
-    # Check DB connection
-    db_status = "online"
-    db_latency = 0
+    db_status, db_latency = "online", 0
     try:
         start = time.time()
-        db.session.execute(text("SELECT 1"))
+        supabase.table('users').select('id').limit(1).execute()
         db_latency = int((time.time() - start) * 1000)
     except Exception:
         db_status = "danger"
-        
-    # Check streaming
+
     from app.routes.streaming import active_sessions
-    streaming_status = "online"
-    
-    import urllib.request
-    import urllib.error
-    lp_status = "online"
-    lp_latency = 0
+    lp_status, lp_latency = "online", 0
     try:
+        import urllib.request
         lp_start = time.time()
         req = urllib.request.Request("https://calmwave-landingpage.vercel.app/", headers={"User-Agent": "Mozilla/5.0"})
-        resp = urllib.request.urlopen(req, timeout=5)
+        resp_lp = urllib.request.urlopen(req, timeout=5)
         lp_latency = int((time.time() - lp_start) * 1000)
-        if resp.getcode() != 200:
+        if resp_lp.getcode() != 200:
             lp_status = "danger"
     except Exception:
         lp_status = "danger"
 
     services = [
-        { "name": "Landing Page", "status": lp_status, "uptime": "99.99%", "latency": f"{lp_latency}ms", "icon": "🌐" },
-        { "name": "API Principal", "status": "online", "uptime": "99.98%", "latency": f"{random.randint(20, 60)}ms", "icon": "⚡" },
-        { "name": "Processamento de Áudio", "status": "online", "uptime": "99.95%", "latency": f"{random.randint(100, 200)}ms", "icon": "🎙️" },
-        { "name": "Transcrição IA", "status": "online", "uptime": "99.80%", "latency": f"{random.randint(200, 400)}ms", "icon": "📝" },
-        { "name": "Streaming WebSocket", "status": streaming_status, "uptime": "99.90%", "latency": f"{random.randint(10, 30)}ms", "icon": "📡" },
-        { "name": "Banco de Dados", "status": db_status, "uptime": "99.99%", "latency": f"{db_latency}ms", "icon": "🗄️" },
-        { "name": "Armazenamento Local", "status": "online", "uptime": "99.97%", "latency": f"{random.randint(5, 15)}ms", "icon": "☁️" },
+        {"name": "Landing Page", "status": lp_status, "uptime": "99.99%", "latency": f"{lp_latency}ms", "icon": "🌐"},
+        {"name": "API Principal", "status": "online", "uptime": "99.98%", "latency": f"{random.randint(20,60)}ms", "icon": "⚡"},
+        {"name": "Processamento de Audio", "status": "online", "uptime": "99.95%", "latency": f"{random.randint(100,200)}ms", "icon": "🎙️"},
+        {"name": "Transcricao IA", "status": "online", "uptime": "99.80%", "latency": f"{random.randint(200,400)}ms", "icon": "📝"},
+        {"name": "Streaming WebSocket", "status": "online", "uptime": "99.90%", "latency": f"{random.randint(10,30)}ms", "icon": "📡"},
+        {"name": "Banco de Dados", "status": db_status, "uptime": "99.99%", "latency": f"{db_latency}ms", "icon": "🗄️"},
+        {"name": "Armazenamento Local", "status": "online", "uptime": "99.97%", "latency": f"{random.randint(5,15)}ms", "icon": "☁️"},
     ]
-    
-    incidents = []
-    
-    overall_status = "online"
-    if any(s["status"] == "danger" for s in services):
-        overall_status = "danger"
-    elif any(s["status"] == "warn" for s in services):
-        overall_status = "warn"
-        
+    overall = "danger" if any(s["status"]=="danger" for s in services) else "warn" if any(s["status"]=="warn" for s in services) else "online"
     online_count = sum(1 for s in services if s["status"] == "online")
-    avg_latency = sum(int(s["latency"].replace("ms", "")) for s in services) // len(services)
-    
+    avg_lat = sum(int(s["latency"].replace("ms","")) for s in services) // len(services)
     return jsonify({
-        "overall_status": overall_status,
-        "services": services,
-        "incidents": incidents,
-        "metrics": {
-            "online_count": online_count,
-            "total_count": len(services),
-            "avg_latency": f"{avg_latency}ms",
-            "uptime_30d": "99.94%"
-        }
+        "overall_status": overall, "services": services, "incidents": [],
+        "metrics": {"online_count": online_count, "total_count": len(services), "avg_latency": f"{avg_lat}ms", "uptime_30d": "99.94%"},
     })
-
