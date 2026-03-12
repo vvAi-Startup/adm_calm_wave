@@ -15,6 +15,7 @@ export default function AudioDetailsPage() {
     const [audio, setAudio] = useState<Audio | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const originalWaveRef = useRef<HTMLDivElement>(null);
     const originalSpecRef = useRef<HTMLDivElement>(null);
@@ -30,12 +31,23 @@ export default function AudioDetailsPage() {
     useEffect(() => {
         if (!id) return;
 
-        audiosAPI.get(id)
-            .then(res => {
-                setAudio(res.audio);
-            })
-            .catch(err => setError(err.message))
-            .finally(() => setLoading(false));
+        const fetchAudio = () =>
+            audiosAPI.get(id)
+                .then(res => {
+                    setAudio(res.audio);
+                    if (res.audio.processed || res.audio.processing_error) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                    }
+                })
+                .catch(err => setError(err.message))
+                .finally(() => setLoading(false));
+
+        fetchAudio();
+        pollingRef.current = setInterval(fetchAudio, 3000);
+
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
     }, [id]);
 
     useEffect(() => {
@@ -188,9 +200,17 @@ export default function AudioDetailsPage() {
                                         <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Espectrograma</div>
                                         <div ref={processedSpecRef} style={{ background: '#111827', borderRadius: 8, overflow: 'hidden', minHeight: 100 }}></div>
                                     </>
+                                ) : (audio as any).processing_error ? (
+                                    <div style={{ padding: 24, textAlign: 'center' }}>
+                                        <div style={{ fontSize: 32, marginBottom: 8 }}>❌</div>
+                                        <div style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: 4 }}>Erro no processamento</div>
+                                        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{(audio as any).processing_error}</div>
+                                    </div>
                                 ) : (
                                     <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                                        Este áudio ainda não foi processado pela IA.
+                                        <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+                                        <div style={{ fontWeight: 600, marginBottom: 4 }}>Processando com IA...</div>
+                                        <div style={{ fontSize: 13 }}>A página atualiza automaticamente quando concluir.</div>
                                     </div>
                                 )}
                             </div>

@@ -1,18 +1,16 @@
 from flask import Flask, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_swagger_ui import get_swaggerui_blueprint
 from dotenv import load_dotenv
 import os
-from sqlalchemy import inspect, text
 
 load_dotenv()
 
-db = SQLAlchemy()
+jwt = JWTManager()
 jwt = JWTManager()
 socketio = SocketIO(cors_allowed_origins="*")
 limiter = Limiter(key_func=get_remote_address)
@@ -20,10 +18,6 @@ limiter = Limiter(key_func=get_remote_address)
 def create_app():
     app = Flask(__name__)
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL", "sqlite:///calmwave.db"
-    )
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-key")
     from datetime import timedelta
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
@@ -32,54 +26,43 @@ def create_app():
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     CORS(app, resources={r"/api/*": {"origins": [frontend_url, "http://localhost:5000"]}})
 
-    db.init_app(app)
+
     from app.supabase_ext import init_supabase
     init_supabase(app)
     jwt.init_app(app)
     socketio.init_app(app)
     limiter.init_app(app)
 
-    # Celery Init
-    from app.celery_ext import celery_app
-    app.config.update(
-        CELERY_BROKER_URL=os.environ.get('REDIS_URL', 'redis://localhost:6379/0'),
-        CELERY_RESULT_BACKEND=os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-    )
-    celery_app.conf.update(app.config)
-
-    # Tratar Erros Globais (Item 3) e Logs de Sistema
+    # Tratar Erros Globais e Logs de Sistema
     from werkzeug.exceptions import HTTPException
     from flask import jsonify, request
-    from app.models.other import Event
     import json
     import logging
 
     @app.after_request
     def log_response(response):
         if request.path.startswith('/api/') and not request.path.endswith('/logs'):
-            # Omit noisy routes like events/logs polling if any, but log API hits
             pass
         return response
 
     @app.errorhandler(Exception)
     def handle_exception(e):
         try:
-            from app.models.other import Event
-            import json
-            error_details = {"error": str(e), "url": request.url, "method": request.method}
-            evt = Event(
-                event_type="SYSTEM_ERROR", 
-                level="error", 
-                screen="backend", 
-                details_json=json.dumps(error_details)
-            )
-            db.session.add(evt)
-            db.session.commit()
-        except:
-            db.session.rollback()
+            from app.supabase_ext import supabase as _sb
+            if _sb is not None:
+                error_details = {"error": str(e), "url": request.url, "method": request.method}
+                _sb.table('events').insert({
+                    "event_type": "SYSTEM_ERROR",
+                    "level": "error",
+                    "screen": "backend",
+                    "details_json": json.dumps(error_details),
+                }).execute()
+        except Exception:
+            pass
 
         if isinstance(e, HTTPException):
             return jsonify({"error": getattr(e, "description", "Erro HTTP"), "status": e.code}), e.code
+        logging.getLogger(__name__).exception("Unhandled exception")
         return jsonify({"error": "Erro interno do servidor", "message": str(e), "status": 500}), 500
 
     @app.errorhandler(404)

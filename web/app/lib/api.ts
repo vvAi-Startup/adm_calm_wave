@@ -292,10 +292,13 @@ export interface Audio {
   size_bytes: number;
   recorded_at: string;
   processed: boolean;
+  processed_path?: string | null;
+  processing_time_ms?: number | null;
+  processing_error?: string | null;
   transcribed: boolean;
-  transcription_text?: string;
+  transcription_text?: string | null;
   favorite: boolean;
-  playlist_id?: number;
+  playlist_id?: number | null;
   device_origin?: string;
 }
 
@@ -381,4 +384,8 @@ export const notificationsAPI = {
   list: () => fetchAPI<Notification[]>("/api/notifications/"),
   markRead: (id: number) => fetchAPI<{ message: string; notification: Notification }>(`/api/notifications/${id}/read`, { method: "PUT" }),
   markAllRead: () => fetchAPI<{ message: string }>("/api/notifications/read-all", { method: "PUT" })
+};
+
+export const adminNotificationsAPI = {
+  broadcast: (data: { title: string; message: string; type: string }) => fetchAPI<{ message: string }>("/api/admin/notifications/broadcast", { method: "POST", body: JSON.stringify(data) })
 };
