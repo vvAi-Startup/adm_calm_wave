@@ -29,16 +29,8 @@ def create_app():
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
 
-    # Origens permitidas: CORS_ORIGINS (vírgula) + FRONTEND_URL + próprio host no Render + localhost
-    _allowed = {"http://localhost:3000", "http://localhost:5000"}
-    if os.getenv("FRONTEND_URL"):
-        _allowed.add(os.getenv("FRONTEND_URL"))
-    if os.getenv("RENDER_EXTERNAL_URL"):
-        _allowed.add(os.getenv("RENDER_EXTERNAL_URL"))
-    if os.getenv("CORS_ORIGINS"):
-        for origin in os.getenv("CORS_ORIGINS").split(","):
-            _allowed.add(origin.strip())
-    CORS(app, resources={r"/api/*": {"origins": list(_allowed)}})
+    # API pública — consumida por web, mobile e outros clientes
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 
     db.init_app(app)
