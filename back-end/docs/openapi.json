@@ -103,7 +103,36 @@
     }
   },
   "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check da API",
+        "description": "Verifica se a API está operacional. Retorna status do serviço, banco de dados e uptime.",
+        "responses": {
+          "200": {
+            "description": "API operacional",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok", "degraded"] },
+                    "service": { "type": "string" },
+                    "version": { "type": "string" },
+                    "uptime_seconds": { "type": "integer" },
+                    "database": { "type": "string", "enum": ["ok", "unreachable"] },
+                    "timestamp": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "503": { "description": "Banco de dados inacessível" }
+        }
+      }
+    },
     "/auth/register": {
+
       "post": {
         "tags": ["Authentication"],
         "summary": "Registrar novo usuário",
