@@ -54,8 +54,8 @@ export default function AudiosPage() {
         setUploading(true);
         try {
             await audiosAPI.upload(file);
-            alert("Áudio enviado e processado com sucesso!");
-            fetchAudios(); // Recarrega a lista
+            alert("Áudio enviado com sucesso! O processamento de IA não está disponível neste ambiente.");
+            fetchAudios();
         } catch (error) {
             alert("Erro ao enviar áudio.");
             console.error(error);
@@ -180,7 +180,7 @@ export default function AudiosPage() {
                                         className="btn btn-primary"
                                         style={{ cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.7 : 1 }}
                                     >
-                                        {uploading ? "⏳ Processando..." : "⬆️ Fazer Upload"}
+                                        {uploading ? "⏳ Enviando..." : "⬆️ Fazer Upload"}
                                     </label>
                                 </div>
                                 <div className="search-bar" style={{ width: 240 }}>
