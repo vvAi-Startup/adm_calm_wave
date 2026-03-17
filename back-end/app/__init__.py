@@ -1,16 +1,18 @@
 from flask import Flask, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_swagger_ui import get_swaggerui_blueprint
 from dotenv import load_dotenv
 import os
+from sqlalchemy import inspect, text
 
 load_dotenv()
 
-jwt = JWTManager()
+db = SQLAlchemy()
 jwt = JWTManager()
 socketio = SocketIO(cors_allowed_origins="*")
 limiter = Limiter(key_func=get_remote_address)
@@ -18,6 +20,10 @@ limiter = Limiter(key_func=get_remote_address)
 def create_app():
     app = Flask(__name__)
 
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+        "DATABASE_URL", "sqlite:///calmwave.db"
+    )
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret-key")
     from datetime import timedelta
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
@@ -26,7 +32,7 @@ def create_app():
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     CORS(app, resources={r"/api/*": {"origins": [frontend_url, "http://localhost:5000"]}})
 
-
+    db.init_app(app)
     from app.supabase_ext import init_supabase
     init_supabase(app)
     jwt.init_app(app)

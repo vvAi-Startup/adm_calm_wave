@@ -17,8 +17,6 @@ flask-swagger-ui
 Werkzeug
 marshmallow
 flask-marshmallow
-celery
-redis
 pytest
 pytest-flask
 Flask-Limiter
