@@ -1,0 +1,18 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    # Ajuste os horários considerando que o GitHub usa UTC
+    - cron: "*/15 9-23 * * *"
+  workflow_dispatch: # Permite rodar manualmente para testar
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request API
+        run: |
+          curl -fLsS --connect-timeout 10 --max-time 30 \
+            -o /dev/null \
+            https://calm-wave-backend.onrender.com/api/health \
+            || echo "Ocorreu um erro no ping, mas o workflow continuará."
