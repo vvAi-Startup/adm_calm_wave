@@ -479,8 +479,8 @@
       "post": {
         "tags": ["Audios"],
         "summary": "Sincronizar metadados de áudio mobile",
-        "description": "Registra os metadados de um áudio armazenado no dispositivo mobile. Nenhum arquivo é enviado.",
-        "security": [{ "bearerAuth": [] }],
+        "description": "Registra os metadados de um áudio armazenado no dispositivo mobile. Nenhum arquivo é enviado. Autenticação é opcional (salva como Guest se não houver).",
+        "security": [{ "bearerAuth": [] }, {}],
         "requestBody": {
           "required": true,
           "content": {
