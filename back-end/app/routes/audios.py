@@ -273,13 +273,21 @@ def batch_export_audios():
 
 
 @audios_bp.route("/sync", methods=["POST"])
-@jwt_required()
+@jwt_required(optional=True)
 def sync_audio():
     """
     Registra metadados de um áudio que está armazenado localmente no dispositivo mobile.
     Nenhum arquivo é enviado — apenas os dados do áudio são persistidos no banco.
+    Se o usuário não enviar Token JWT, o áudio será salvo na conta 'Guest'.
     """
     user_id = get_jwt_identity()
+    if not user_id:
+        guest_resp = supabase.table("users").select("id").eq("email", "guest@calmwave.com").execute()
+        if guest_resp.data:
+            user_id = guest_resp.data[0]["id"]
+        else:
+            return jsonify({"error": "Usuário guest não encontrado no sistema"}), 500
+
     data = request.get_json(silent=True) or {}
 
     filename = data.get("filename")
