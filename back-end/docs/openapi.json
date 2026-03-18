@@ -131,7 +131,51 @@
         }
       }
     },
+    "/audios/sync": {
+      "post": {
+        "tags": ["Audios"],
+        "summary": "Sincronizar áudio do dispositivo mobile",
+        "description": "Registra no banco os metadados de um áudio armazenado localmente no celular. Nenhum arquivo é enviado — o arquivo permanece no dispositivo do usuário.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["filename"],
+                "properties": {
+                  "filename": { "type": "string", "description": "Nome do arquivo de áudio no dispositivo" },
+                  "duration_seconds": { "type": "number", "description": "Duração em segundos" },
+                  "size_bytes": { "type": "integer", "description": "Tamanho em bytes" },
+                  "device_origin": { "type": "string", "description": "Identificação do dispositivo (ex: Android, iPhone)", "default": "Mobile" },
+                  "recorded_at": { "type": "string", "format": "date-time", "description": "Data/hora da gravação (ISO 8601)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Metadados sincronizados com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "audio": { "$ref": "#/components/schemas/Audio" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Campo 'filename' não informado" },
+          "401": { "description": "Não autorizado" }
+        }
+      }
+    },
     "/auth/register": {
+
 
       "post": {
         "tags": ["Authentication"],

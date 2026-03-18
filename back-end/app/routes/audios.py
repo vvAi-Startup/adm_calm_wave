@@ -270,3 +270,38 @@ def batch_export_audios():
                 zf.writestr(txt_name, audio['transcription_text'])
     memory_file.seek(0)
     return send_file(memory_file, mimetype="application/zip", as_attachment=True, download_name="calmwave_export.zip")
+
+
+@audios_bp.route("/sync", methods=["POST"])
+@jwt_required()
+def sync_audio():
+    """
+    Registra metadados de um áudio que está armazenado localmente no dispositivo mobile.
+    Nenhum arquivo é enviado — apenas os dados do áudio são persistidos no banco.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json(silent=True) or {}
+
+    filename = data.get("filename")
+    if not filename:
+        return jsonify({"error": "Campo 'filename' é obrigatório"}), 400
+
+    record = {
+        "user_id": int(user_id),
+        "filename": filename,
+        "duration_seconds": data.get("duration_seconds", 0),
+        "size_bytes": data.get("size_bytes", 0),
+        # device_origin identifica que o arquivo está no dispositivo (sem file_path)
+        "device_origin": data.get("device_origin", "Mobile"),
+        "recorded_at": data.get("recorded_at"),
+        "processed": False,
+        "transcribed": False,
+        "favorite": False,
+    }
+
+    resp = supabase.table("audios").insert(record).execute()
+    if not resp.data:
+        return jsonify({"error": "Erro ao sincronizar áudio"}), 500
+
+    return jsonify({"audio": resp.data[0]}), 201
+
