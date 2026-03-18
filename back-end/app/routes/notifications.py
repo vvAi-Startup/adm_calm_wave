@@ -13,9 +13,9 @@ def get_notifications():
         # Notificações do usuário
         user_resp = supabase.table('notifications').select('*') \
             .eq('user_id', current_user_id).order('created_at', desc=True).limit(20).execute()
-        # Notificações globais (user_id = null)
+        # Notificações globais (user_id is null)
         global_resp = supabase.table('notifications').select('*') \
-            .is_('user_id', 'null').order('created_at', desc=True).limit(20).execute()
+            .is_('user_id', None).order('created_at', desc=True).limit(20).execute()
 
         combined = (user_resp.data or []) + (global_resp.data or [])
         # Ordena por data desc e limita a 20
