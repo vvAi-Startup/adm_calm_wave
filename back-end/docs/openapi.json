@@ -495,12 +495,67 @@
                   "device_origin": { "type": "string", "default": "Mobile" },
                   "recorded_at": { "type": "string", "format": "date-time" }
                 }
+              },
+              "examples": {
+                "SincronizacaoComum": {
+                  "summary": "Exemplo do Payload Mobile",
+                  "value": {
+                    "filename": "gravacao_cliente.m4a",
+                    "duration_seconds": 125.5,
+                    "size_bytes": 1024500,
+                    "device_origin": "iPhone do Joao",
+                    "recorded_at": "2026-03-18T15:30:00Z"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Metadados sincronizados", "content": { "application/json": { "schema": { "type": "object", "properties": { "audio": { "$ref": "#/components/schemas/Audio" } } } } } },
+          "201": {
+            "description": "Metadados sincronizados e ID gerado retornado.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "audio": { "$ref": "#/components/schemas/Audio" } } },
+                "examples": {
+                  "Autenticado": {
+                    "summary": "Resposta com Usuário Logado",
+                    "value": {
+                      "audio": {
+                        "id": 142,
+                        "user_id": 5,
+                        "filename": "gravacao_cliente.m4a",
+                        "device_origin": "iPhone do Joao",
+                        "duration_seconds": 125.5,
+                        "size_bytes": 1024500,
+                        "processed": false,
+                        "transcribed": false,
+                        "favorite": false,
+                        "playlist_id": null
+                      }
+                    }
+                  },
+                  "Guest": {
+                    "summary": "Resposta Guest (Sem Header Authorization)",
+                    "value": {
+                      "audio": {
+                        "id": 143,
+                        "user_id": 2,
+                        "filename": "gravacao_cliente.m4a",
+                        "device_origin": "iPhone do Joao",
+                        "duration_seconds": 125.5,
+                        "size_bytes": 1024500,
+                        "processed": false,
+                        "transcribed": false,
+                        "favorite": false,
+                        "playlist_id": null
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "400": { "description": "Campo filename obrigatório" }
         }
       }
