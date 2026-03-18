@@ -478,8 +478,8 @@
     "/audios/sync": {
       "post": {
         "tags": ["Audios"],
-        "summary": "Sincronizar metadados de áudio mobile",
-        "description": "Registra os metadados de um áudio armazenado no dispositivo mobile. Nenhum arquivo é enviado. Autenticação é opcional (salva como Guest se não houver).",
+        "summary": "Sincronizar metadados de áudio mobile (Cloud Sync)",
+        "description": "Permite que aplicativos mobile (iOS/Android) registrem no banco de dados central metadados de áudios que foram gravados e estão armazenados localmente no aparelho.\n\n### Comportamento de Autenticação\n- **Usuários logados**: Envie o header `Authorization: Bearer <TOKEN>`. O áudio será vinculado à conta real do usuário.\n- **Testes / Usuários Anônimos**: Não envie o header `Authorization`. O áudio será automaticamente vinculado à conta genérica `Guest` para facilitar os testes da equipe mobile sem precisar de tela de login.\n\n### O que essa rota faz?\n1. **Nenhum arquivo de áudio é trafegado** nesta requisição, economizando banda.\n2. Insere um registro na tabela `audios` sinalizando `processed: false` e identificando pelo `device_origin` que o arquivo ainda está fisicamente no celular (sem `file_path` no cloud).\n3. Retorna o ID gerado pelo banco para que o mobile possa salvar no armazenamento local e parear o arquivo com a nuvem futuramente.",
         "security": [{ "bearerAuth": [] }, {}],
         "requestBody": {
           "required": true,
