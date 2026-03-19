@@ -1,117 +1,114 @@
-# ðŸŒŠ CalmWave
+# 🌊 CalmWave
 
-O **CalmWave** Ã© uma aplicaÃ§Ã£o completa de Ã¡udio-intelÃªngencia. Ela foca na captaÃ§Ã£o, processo de **remoÃ§Ã£o de ruÃ­dos via inteligÃªncia artificial** (`best_denoiser_model.pth`), transcriÃ§Ã£o automatizada textual e anÃ¡lise de dados das gravaÃ§Ãµes. O sistema possui um robusto banco de dados e um painel analÃ­tico em tempo real.
+O **CalmWave** é uma aplicação completa de inteligência de áudio. Ela foca na captação, processo de **remoção de ruídos via inteligência artificial** (`best_denoiser_model.pth`), transcrição automatizada textual e análise de dados das gravações. O sistema possui um robusto banco de dados (Supabase/PostgreSQL) e um painel analítico em tempo real.
 
-O projeto inteiro estÃ¡ dividido em dois mÃ³dulos principais:
+O projeto está dividido em dois módulos principais:
 
-1. **Back-End API** (`back-end/`): Escrito em Python utilizando Flask, SQLAlchemy (banco de dados), JWT para autenticaÃ§Ã£o, Socket.IO, e Pytorch com manipulaÃ§Ã£o fÃ­sica dos bytes do Ã¡udio (denoiser) e SpeechRecognition (transcriÃ§Ã£o).
-2. **Dashboard Web Front-End** (`web/`): Uma aplicaÃ§Ã£o SPA robusta em Next.js para controle do sistema, ouvintes das ondas sonoras virtuais em tempo real (Wavesurfer.js), streaming de mÃ­dia e painel de analÃ­tica visual.
-
----
-
-## ðŸ“¦ Estrutura de Pastas e Responsabilidades
-
-* `back-end/`: ContÃ©m todo o serviÃ§o lÃ³gico autÃ´nomo da API e Banco de Dados (SQLite).
-  * `app/models/`: Modelos de abstraÃ§Ã£o SQLAlchemy para a criaÃ§Ã£o das tabelas `Users`, `Audios`, `Events`, etc.
-  * `app/routes/`: Os endpoints (controllers) do servidor. Tais como usuÃ¡rios (`users.py`), streams (`streaming.py`) e arquivos (`audios.py`).
-  * `app/services/`: ServiÃ§o interno que isola o carregamento do modelo de ruÃ­do e transcriÃ§Ã£o (Pytorch e processador).
-  * `uploads/`: Pasta virtual reservada para o armazenamento dos arquivos locais (WAV e mÃ­dias limpas).
-* `web/`: AplicaÃ§Ã£o front-end focada na experiÃªncia do usuÃ¡rio. MÃ³dulos independentes como pÃ¡ginas para dashboard, autenticaÃ§Ã£o (`login`), lista de usuÃ¡rios (`users`) e player web (`audios`).
-  * `app/components/`: Componentes especÃ­ficos como cabeÃ§alhos (`Header.tsx`), menus laterais (`Sidebar.tsx`) e middlewares de rotas privadas (`ProtectedRoute.tsx`).
-  * Servido via `Next.js 16.1.6`, com React 19 fluido e estilizaÃ§Ã£o ultra minimalista fornecida pelo TailwindCSS.
+1. **Back-End API** (`back-end/`): Escrito em Python utilizando Flask, Supabase (banco de dados PostgreSQL), JWT para autenticação e dependências de áudio (Pytorch com manipulação de bytes de áudio para denoise e SpeechRecognition para transcrição).
+2. **Dashboard Web Front-End** (`web/`): Uma aplicação SPA robusta em Next.js para controle do sistema, ouvir ondas sonoras virtuais em tempo real (Wavesurfer.js), streaming de mídia e painel de analítica visual.
 
 ---
 
-## ðŸš€ Como Executar Localmente
+## 📦 Estrutura de Pastas e Responsabilidades
 
-### PrÃ©-requisitos PadrÃ£o
-- Python 3.8+ instalado e disponÃ­vel via `python`.
-- Node.js 18+ instalado e gerenciador de pacotes `npm`.
+* `back-end/`: Contém todo o serviço lógico da API e conexão com o Banco de Dados (Supabase).
+  * `app/routes/`: Os endpoints (controllers) do servidor. Tais como usuários (`users.py`), transcrição/áudio (`audios.py`), saúde da API (`health.py`).
+  * `app/services/`: Serviço interno que isola o processamento dos áudios e integrações (ex: `audio_processor.py`).
+  * `uploads/`: Pasta reservada para o armazenamento temporário de uploads.
+* `web/`: Aplicação front-end focada na experiência do usuário. Módulos como páginas para dashboard, autenticação, lista de usuários e player web (`audios`).
+  * `app/components/`: Componentes específicos como cabeçalhos (`Header.tsx`), menus laterais (`Sidebar.tsx`) e controle de estado.
+  * Servido via Next.js com React e estilização provida pelo TailwindCSS.
 
-### 1ï¸ âƒ£ Iniciando o Back-End (A API Python Flask)
+---
 
-Abra o terminal na pasta root e acesse a pasta `back-end`:
+## 🚀 Como Executar Localmente
+
+### Pré-requisitos
+- Python 3.8+ instalado.
+- Node.js 18+ instalado (com `npm`).
+- Conta e Projeto configurado no [Supabase](https://supabase.com).
+
+### 1️⃣ Iniciando o Back-End (API Flask)
+
+Abra o terminal na raiz e acesse a pasta `back-end`:
 
 ```bash
 cd back-end
 
-# 1. Crie seu ambiente virtual (recomendado)
+# 1. Crie seu ambiente virtual
 python -m venv venv
 
-# 2. Ative o ambiente virtual recÃ©m-criado
+# 2. Ative o ambiente virtual
 # Windows:
 venv\Scripts\activate
 # Linux/Mac:
 source venv/bin/activate
 
-# 3. Instale as milhares dependÃªncias prontas
+# 3. Instale as dependências
 pip install -r requirements.txt
 
-# 4. Inicie o servidor Socket.io Flask
+# 4. Configure o arquivo .env (crie se não existir) com as credenciais dadas pelo Supabase.
+
+# 5. Inicie o servidor Flask
 python run.py
 ```
-> O servidor da API ficarÃ¡ aguardando contatos na porta e roteamento: **http://localhost:5000**
-*(O banco de dados SQLite interno e as rotinas base serÃ£o gerados automaticamente no seu primeiro start).*
-
-**ðŸ”‘ UsuÃ¡rio Administrador PadrÃ£o Criado Via "Seed":**
-- **Email:** `admin@calmwave.com`
-- **Senha:** `admin123`
+> O servidor aguardará requisições na porta **http://localhost:5000**
 
 ---
 
-### 2ï¸ âƒ£ Iniciando o Painel de Gerenciamento da Web (Front-End)
+### 2️⃣ Iniciando o Painel Web (Front-End)
 
-Em um outro terminal de trabalho (para nÃ£o derrubar o backend), acesse a pasta `web`:
+Em um outro terminal, acesse a pasta `web`:
 
 ```bash
 cd web
 
-# 1. Instale os mÃ³dulos pesados do Node.js estÃ¡veis:
+# 1. Instale as dependências:
 npm install
 
-# 2. Rode em ambiente de desenvolvimento (porta web 3000):
+# 2. Configure o arquivo .env.local com a URL da API:
+# Ex: NEXT_PUBLIC_API_URL=http://localhost:5000
+
+# 3. Rode o servidor de dev:
 npm run dev
 ```
-> O front-end carregarÃ¡ sob demanda os componentes em: **http://localhost:3000**
+> A aplicação carregará em **http://localhost:3000**
 
 ---
 
-## ðŸ“š DocumentaÃ§Ã£o das Rotas da API (Endpoints)
+## 📚 Documentação das Rotas da API
 
-Na raiz de execuÃ§Ã£o, a API trabalha via verbos REST HTTP, respondendo sob a URL base `/api/...`.
-Exceto Ã s rotas de login e register, **todas as demais requisiÃ§Ãµes requerem uma sessÃ£o ativa (Login)**. Isso significa fornecer no header HTTP associado a chave: `Authorization: Bearer <seu_token_aqui>`.
+A API trabalha via requisições REST, rotas protegidas (na maioria) via token JWT inserido no cabeçalho `Authorization: Bearer <token>`.
 
-### ðŸ” Auth & SeguranÃ§a (`/api/auth`)
-- `POST /api/auth/login` â†’ Autentica um usuÃ¡rio com `email` e `password`. Se o preenchimento for vÃ¡lido devolve um payload assinado `token` via JWT. Ele faz tracking de dispositivo e registro de IP da sessÃ£o pelo Socket.
-- `POST /api/auth/register` â†’ Cria um novo cadastro comum em app, onde se exige as chaves `name`, `email` e `password` no JSON. O backend realiza um hash da senha atravÃ©s da biblioteca *Bcrypt*!
-- `GET /api/auth/me` â†’ Verificador RÃ¡pido. Se a requisiÃ§Ã£o possuir um token JWT de usuÃ¡rio legÃ­timo ativado, retorna todos os dados do BD dele (sem senhas e caches visÃ­veis).
+### 🔑 Auth & Segurança (`/auth`)
+- `POST /auth/login` → Autentica com `email` e `password`. Devolve token JWT.
+- `POST /auth/register` → Cria um novo usuário.
+- `GET /auth/me` → Valida o token e retorna o usuário atual.
 
-### ðŸŽ§ TransaÃ§Ãµes de Ãudio (`/api/audios`)
-- `GET /api/audios` â†’ Retorna de forma assÃ­ncrona o seu catÃ¡logo prÃ³prio. Suporta os parÃ¢metros *query* (paginado) como: `?page=X`, `?per_page=Y`, `?processed=true` e `?favorite=true`.
-- `GET /api/audios/<id>` â†’ Traz os detalhes, tamanho do arquivo e rastreamento de tempo de limpeza (`processing_time_ms`) de uma mÃ­dia Ãºnica gravada.
-- `POST /api/audios/upload` â†’ *A Rota Core:* Envia via `multipart/form-data` fisicamente um Ã¡udio pelo campo `file`. O servidor assimila este Ã¡udio, o passa pela engrenagem de **Modelos de IA denoiser** (removendo barulhos extras por tensÃµes) e, por focar na acessibilidade, dispara logo a rotina subjacente text-to-speech `transcribe_audio`.
-- `GET /api/audios/play/<id>?type=processed` â†’ Rota exclusiva para reprodutor do painel HTML5 `Wavesurfer.js`! Ela extrai os buffers sob demanda. Use `type=original` caso vocÃª vÃ¡ consumir o som sujo ou cru na pÃ¡gina web.
-- `PUT /api/audios/<id>` â†’ Trata pequenas ediÃ§Ãµes pontuais sobre a sessÃ£o de uma gravaÃ§Ã£o (ex. marcar como favorito, trocar tÃ­tulo ou setar ID de uma playlist).
-- `DELETE /api/audios/<id>` â†’ Elimina definitivamente do banco SQLite e da pasta de *uploads* todo o trajeto do arquivo fÃ­sico do banco de sessoes.
+### 🎧 Áudio (`/audios`)
+- `GET /audios` → Retorna o catálogo de áudios.
+- `GET /audios/sync` → Sincronização mobile, acesso `Guest` habilitado sem necessitar de token.
+- `POST /audios/upload` → Upload de arquivo, aciona engrenagens de remoção de ruído (denoiser) e transcrição.
+- `PUT /audios/<id>` → Atualiza informações do áudio.
+- `DELETE /audios/<id>` → Remove o áudio.
 
-### ðŸ‘¥ AdministraÃ§Ã£o de Painel & UsuÃ¡rios (`/api/users`)
-Rotas desenhadas para atualizar nomes, perfis ou atÃ© administradores ativarem/desativarem contas para suspensÃµes dentro da plataforma analÃ­tica.
+### 👥 Usuários (`/users`)
+- Atualizar perfil, gerenciar permissões administrativas e listagens.
 
-### ðŸ“Š Logs e MÃ©tricas em Tempo Real (`/api/events`, `/api/stats`, `/api/streaming`...)
-Para o nÃºcleo Dashboard ter painÃ©is atualizÃ¡veis, hÃ¡ endpoints que cruzam dados com Python: Eles observam de usuÃ¡rios ativados na plataforma (MAU / WAU) no intervalo, a tempo total engajado processando mÃ­dia, por regiÃ£o ou em grÃ¡ficos de Pizza (charts em web interface). A aplicaÃ§Ã£o gera rastros contÃ­nuos por mÃ³dulo via log/logs screen com as classes modeladoras de `Events`.
+### 🚑 Healthcheck
+- `GET /health` → Rota monitorada externamente que responde pelo uptime, versão do endpoint, e validação de comunicação direta com o Supabase.
 
 ---
 
-## ðŸ’» Tecnologias em AÃ§Ã£o (Stack)
+## 💻 Stack Tecnológica
 
-**No Backend (Python 3.8+)**
-- API Core: `Flask`, `Flask-RESTless`, e gerenciamento `Flask-SQLAlchemy` (ORM) com BD `SQLite`.
-- Tempo Real & CORS: `Flask-SocketIO`, integrador `eventlet`, com suporte estendido Ã  requisiÃ§Ãµes Cross-Origin.
-- Engenharia FÃ­sica Som & Machine Learning Ia: Biblioteca neural `PyTorch`, extensÃ£o `torchaudio`. Recortes de trilhas baseados em `pydub`, `soundfile` e transcriÃ§Ãµes atravÃ©s da framework `SpeechRecognition`.
-- Algoritmos Base Hashing: `Bcrypt` em pares combinatoriais e `PyJWT` autÃªntico seguro por Token.
+**Backend**
+- Framework: `Flask`
+- Banco de Dados: `Supabase` (PostgreSQL)
+- Processamento: `PyTorch`, `torchaudio`, `SpeechRecognition`
+- Segurança: `Bcrypt`, `PyJWT`
 
-**No Frontend Web (`Node` / `Next.js`)**
-- Core Roteador Otimizado: `Next.js v16` operando sob um `React v19`.
-- GrÃ¡fico e Design Components UI: Baseado totalmente no robusto `Tailwind CSS 4.0` (por pacotes `postcss` na compilaÃ§Ã£o dos layouts).
-- Processo de Som/Players Customizado Web: `wavesurfer.js 7.12` para pintura no Canvas das variaÃ§Ãµes de tom, sem dependÃªncia estÃ¡tica.
-- ComunicaÃ§Ã£o Servidor InstantÃ¢nea: Interface Websockets com `socket.io-client`.
+**Frontend**
+- Framework React: `Next.js`
+- Design e UI: `Tailwind CSS`
+- Player Customizado: `wavesurfer.js`
