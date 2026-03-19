@@ -16,8 +16,8 @@ web/.pnp.*
 **/*.py[cod]
 back-end/*$py.class
 back-end/venv/
-back-end/env/
-back-end/.env
+# back-end/env/
+# back-end/.env
 back-end/.venv/
 back-end/instance/
 back-end/.pytest_cache/

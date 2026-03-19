@@ -2,17 +2,18 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import socketio
 from app.supabase_ext import supabase
-import os, time, io, zipfile, json
+import os, time, io, zipfile, json, threading
 from werkzeug.utils import secure_filename
 from app.services.push_service import PushService
 
 audios_bp = Blueprint("audios", __name__)
 
 try:
-    from app.services.audio_processor import denoiser, transcribe_audio
+    from app.services.audio_processor import denoiser, transcribe_audio, get_audio_duration
 except ImportError:
     denoiser = None
     transcribe_audio = None
+    get_audio_duration = lambda p: 0.0
     print("Warning: Audio processor not available")
 
 
@@ -54,11 +55,15 @@ def upload_audio():
     file_path = os.path.join(upload_dir, filename)
     file.save(file_path)
 
+    # Calcular duração real do áudio
+    duration_sec = int(get_audio_duration(file_path))
+
     audio_resp = supabase.table('audios').insert({
-        "user_id": user_id,
+        "user_id": int(user_id),
         "filename": filename,
         "file_path": file_path,
         "size_bytes": os.path.getsize(file_path),
+        "duration_seconds": duration_sec,
         "device_origin": request.form.get("device_origin", "Web"),
         "processed": False,
         "transcribed": False,
@@ -66,55 +71,31 @@ def upload_audio():
     }).execute()
     audio = audio_resp.data[0]
 
-    supabase.table('events').insert({
-        "user_id": user_id, "event_type": "AUDIO_UPLOADED", "level": "info",
-        "screen": "audio", "details_json": json.dumps({"filename": filename, "size": audio['size_bytes']}),
-    }).execute()
+    # Log de evento + processamento em background (não bloqueia a resposta)
+    _enqueue_processing(audio['id'], file_path, user_id, event_log={
+        "user_id": int(user_id), "filename": filename, "size": audio['size_bytes']
+    })
 
-    if denoiser and denoiser.model is not None:
-        try:
-            start_time = time.time()
-            with open(file_path, 'rb') as f:
-                audio_bytes = f.read()
-            processed_bytes = denoiser.denoise_audio(audio_bytes)
-            processed_filename = f"processed_{filename}"
-            processed_path = os.path.join(upload_dir, processed_filename)
-            with open(processed_path, 'wb') as f:
-                f.write(processed_bytes)
-            update_data = {
-                "processed": True,
-                "processed_path": processed_path,
-                "processing_time_ms": int((time.time() - start_time) * 1000),
-            }
-            if transcribe_audio:
-                u_resp = supabase.table('users').select('transcription_language').eq('id', user_id).execute()
-                lang = u_resp.data[0].get('transcription_language', 'pt-BR') if u_resp.data else 'pt-BR'
-                transcription = transcribe_audio(processed_path, language=lang)
-                if transcription:
-                    update_data["transcribed"] = True
-                    update_data["transcription_text"] = transcription
-            supabase.table('audios').update(update_data).eq('id', audio['id']).execute()
-            audio.update(update_data)
-            supabase.table('events').insert({
-                "user_id": user_id, "event_type": "AUDIO_PROCESSED", "level": "info",
-                "screen": "audio", "details_json": json.dumps({
-                    "audio_id": audio['id'], "processing_time_ms": update_data["processing_time_ms"],
-                    "transcribed": update_data.get("transcribed", False),
-                }),
-            }).execute()
-            PushService.send_push_notification(
-                user_id=user_id, title="Audio Processado",
-                message=f"Seu audio '{filename}' foi limpo e esta pronto.",
-                data_payload={"audio_id": audio['id']},
-            )
-            socketio.emit("audio_completed", {"audio_id": audio['id'], "filename": filename, "message": "Processamento concluido!"}, namespace="/")
-        except Exception as e:
-            import traceback; traceback.print_exc()
-            supabase.table('events').insert({
-                "user_id": user_id, "event_type": "AUDIO_PROCESSING_FAILED", "level": "error",
-                "screen": "audio", "details_json": json.dumps({"error": str(e)}),
-            }).execute()
     return jsonify({"audio": audio}), 201
+
+
+def _enqueue_processing(audio_id, file_path, user_id, event_log=None):
+    """Processa o áudio e registra o evento em background usando thread."""
+    from app.tasks.audio_tasks import _do_process
+
+    def _run():
+        if event_log:
+            try:
+                supabase.table('events').insert({
+                    "user_id": event_log["user_id"], "event_type": "AUDIO_UPLOADED",
+                    "level": "info", "screen": "audio",
+                    "details_json": json.dumps({"filename": event_log["filename"], "size": event_log["size"]}),
+                }).execute()
+            except Exception:
+                pass
+        _do_process(audio_id, file_path, user_id)
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @audios_bp.route("/sync", methods=["POST"])
@@ -158,6 +139,26 @@ def sync_audio_offline():
         "details_json": json.dumps({"filename": filename, "processed": processed, "transcribed": bool(transcription)}),
     }).execute()
     return jsonify({"audio": audio, "message": "Audio sincronizado com sucesso (Offline Sync)"}), 201
+
+
+@audios_bp.route("/<int:audio_id>/reprocess", methods=["POST"])
+@jwt_required()
+def reprocess_audio(audio_id):
+    """Reprocessa um áudio que ficou com status Pendente."""
+    current_user_id = get_jwt_identity()
+    resp = supabase.table('audios').select('*').eq('id', audio_id).execute()
+    if not resp.data:
+        return jsonify({"error": "Áudio não encontrado"}), 404
+    audio = resp.data[0]
+    file_path = audio.get('file_path')
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({"error": "Arquivo de áudio não encontrado no servidor"}), 404
+    # Limpar erro anterior e resetar status
+    supabase.table('audios').update({
+        "processed": False, "processing_error": None
+    }).eq('id', audio_id).execute()
+    _enqueue_processing(audio_id, file_path, current_user_id)
+    return jsonify({"message": "Reprocessamento enfileirado", "audio_id": audio_id}), 202
 
 
 @audios_bp.route("/", methods=["GET"])
@@ -269,3 +270,46 @@ def batch_export_audios():
                 zf.writestr(txt_name, audio['transcription_text'])
     memory_file.seek(0)
     return send_file(memory_file, mimetype="application/zip", as_attachment=True, download_name="calmwave_export.zip")
+
+
+@audios_bp.route("/sync", methods=["POST"])
+@jwt_required(optional=True)
+def sync_audio():
+    """
+    Registra metadados de um áudio que está armazenado localmente no dispositivo mobile.
+    Nenhum arquivo é enviado — apenas os dados do áudio são persistidos no banco.
+    Se o usuário não enviar Token JWT, o áudio será salvo na conta 'Guest'.
+    """
+    user_id = get_jwt_identity()
+    if not user_id:
+        guest_resp = supabase.table("users").select("id").eq("email", "guest@calmwave.com").execute()
+        if guest_resp.data:
+            user_id = guest_resp.data[0]["id"]
+        else:
+            return jsonify({"error": "Usuário guest não encontrado no sistema"}), 500
+
+    data = request.get_json(silent=True) or {}
+
+    filename = data.get("filename")
+    if not filename:
+        return jsonify({"error": "Campo 'filename' é obrigatório"}), 400
+
+    record = {
+        "user_id": int(user_id),
+        "filename": filename,
+        "duration_seconds": data.get("duration_seconds", 0),
+        "size_bytes": data.get("size_bytes", 0),
+        # device_origin identifica que o arquivo está no dispositivo (sem file_path)
+        "device_origin": data.get("device_origin", "Mobile"),
+        "recorded_at": data.get("recorded_at"),
+        "processed": False,
+        "transcribed": False,
+        "favorite": False,
+    }
+
+    resp = supabase.table("audios").insert(record).execute()
+    if not resp.data:
+        return jsonify({"error": "Erro ao sincronizar áudio"}), 500
+
+    return jsonify({"audio": resp.data[0]}), 201
+

@@ -29,8 +29,9 @@ def create_app():
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    CORS(app, resources={r"/api/*": {"origins": [frontend_url, "http://localhost:5000"]}})
+    # API pública — consumida por web, mobile e outros clientes
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
 
     db.init_app(app)
     from app.supabase_ext import init_supabase
@@ -39,47 +40,36 @@ def create_app():
     socketio.init_app(app)
     limiter.init_app(app)
 
-    # Celery Init
-    from app.celery_ext import celery_app
-    app.config.update(
-        CELERY_BROKER_URL=os.environ.get('REDIS_URL', 'redis://localhost:6379/0'),
-        CELERY_RESULT_BACKEND=os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-    )
-    celery_app.conf.update(app.config)
-
-    # Tratar Erros Globais (Item 3) e Logs de Sistema
+    # Tratar Erros Globais e Logs de Sistema
     from werkzeug.exceptions import HTTPException
     from flask import jsonify, request
-    from app.models.other import Event
     import json
     import logging
 
     @app.after_request
     def log_response(response):
         if request.path.startswith('/api/') and not request.path.endswith('/logs'):
-            # Omit noisy routes like events/logs polling if any, but log API hits
             pass
         return response
 
     @app.errorhandler(Exception)
     def handle_exception(e):
         try:
-            from app.models.other import Event
-            import json
-            error_details = {"error": str(e), "url": request.url, "method": request.method}
-            evt = Event(
-                event_type="SYSTEM_ERROR", 
-                level="error", 
-                screen="backend", 
-                details_json=json.dumps(error_details)
-            )
-            db.session.add(evt)
-            db.session.commit()
-        except:
-            db.session.rollback()
+            from app.supabase_ext import supabase as _sb
+            if _sb is not None:
+                error_details = {"error": str(e), "url": request.url, "method": request.method}
+                _sb.table('events').insert({
+                    "event_type": "SYSTEM_ERROR",
+                    "level": "error",
+                    "screen": "backend",
+                    "details_json": json.dumps(error_details),
+                }).execute()
+        except Exception:
+            pass
 
         if isinstance(e, HTTPException):
             return jsonify({"error": getattr(e, "description", "Erro HTTP"), "status": e.code}), e.code
+        logging.getLogger(__name__).exception("Unhandled exception")
         return jsonify({"error": "Erro interno do servidor", "message": str(e), "status": 500}), 500
 
     @app.errorhandler(404)
@@ -91,11 +81,23 @@ def create_app():
         return jsonify({"error": "Requisição inválida", "status": 400}), 400
 
     
-    # Servir arquivo estático openapi.json
+    # Servir openapi.json com o servidor correto baseado no host da requisição
     @app.route('/api/docs/openapi.json')
     def swagger_json():
+        import json as _json
+        from flask import jsonify as _jsonify
         docs_dir = os.path.abspath(os.path.join(app.root_path, '..', 'docs'))
-        return send_from_directory(docs_dir, 'openapi.json')
+        with open(os.path.join(docs_dir, 'openapi.json'), 'r', encoding='utf-8') as f:
+            spec = _json.load(f)
+        scheme = 'https' if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https' else 'http'
+        current_url = f"{scheme}://{request.host}/api"
+        servers = [{"url": current_url, "description": "Servidor Atual"}]
+        if request.host != 'localhost:5000':
+            servers.append({"url": "http://localhost:5000/api", "description": "Local (dev)"})
+        spec['servers'] = servers
+        return _jsonify(spec)
+
+
 
     # Configurar Swagger UI
     SWAGGER_URL = '/docs'
@@ -121,7 +123,9 @@ def create_app():
     from app.routes.support import support_bp
     from app.routes.privacy import privacy_bp
     from app.routes.billing import billing_bp
+    from app.routes.health import health_bp
 
+    app.register_blueprint(health_bp, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
     app.register_blueprint(audios_bp, url_prefix="/api/audios")

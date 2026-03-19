@@ -35,6 +35,7 @@
           "last_access": { "type": "string", "format": "date-time" },
           "active": { "type": "boolean" },
           "account_type": { "type": "string", "enum": ["free", "premium", "admin"] },
+          "role": { "type": "string" },
           "settings": {
             "type": "object",
             "properties": {
@@ -52,13 +53,14 @@
           "id": { "type": "integer" },
           "user_id": { "type": "integer" },
           "filename": { "type": "string" },
-          "duration_seconds": { "type": "integer" },
+          "duration_seconds": { "type": "number" },
           "size_bytes": { "type": "integer" },
           "recorded_at": { "type": "string", "format": "date-time" },
           "processed": { "type": "boolean" },
           "processing_time_ms": { "type": "integer" },
+          "processing_error": { "type": "string", "nullable": true },
           "transcribed": { "type": "boolean" },
-          "transcription_text": { "type": "string" },
+          "transcription_text": { "type": "string", "nullable": true },
           "favorite": { "type": "boolean" },
           "playlist_id": { "type": "integer", "nullable": true },
           "device_origin": { "type": "string" }
@@ -83,7 +85,7 @@
           "user_id": { "type": "integer", "nullable": true },
           "title": { "type": "string" },
           "message": { "type": "string" },
-          "type": { "type": "string", "enum": ["info", "success", "warning", "danger"] },
+          "type": { "type": "string" },
           "is_read": { "type": "boolean" },
           "created_at": { "type": "string", "format": "date-time" }
         }
@@ -99,13 +101,60 @@
           "screen": { "type": "string" },
           "level": { "type": "string", "enum": ["info", "warning", "error"] }
         }
+      },
+      "SupportTicket": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "user_id": { "type": "integer" },
+          "subject": { "type": "string" },
+          "status": { "type": "string", "enum": ["open", "in_progress", "closed"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "messages_count": { "type": "integer" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
       }
     }
   },
   "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check da API",
+        "description": "Verifica se a API está operacional e se o banco de dados responde.",
+        "responses": {
+          "200": {
+            "description": "API operacional",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok", "degraded"] },
+                    "service": { "type": "string" },
+                    "version": { "type": "string" },
+                    "uptime_seconds": { "type": "integer" },
+                    "database": { "type": "string", "enum": ["ok", "unreachable"] },
+                    "timestamp": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "503": { "description": "Banco de dados inacessível" }
+        }
+      }
+    },
+
     "/auth/register": {
       "post": {
-        "tags": ["Authentication"],
+        "tags": ["Auth"],
         "summary": "Registrar novo usuário",
         "requestBody": {
           "required": true,
@@ -125,20 +174,7 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Usuário registrado com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "token": { "type": "string" },
-                    "user": { "$ref": "#/components/schemas/User" }
-                  }
-                }
-              }
-            }
-          },
+          "201": { "description": "Usuário registrado com sucesso" },
           "400": { "description": "Dados inválidos" },
           "409": { "description": "Email já cadastrado" }
         }
@@ -146,7 +182,7 @@
     },
     "/auth/login": {
       "post": {
-        "tags": ["Authentication"],
+        "tags": ["Auth"],
         "summary": "Fazer login",
         "requestBody": {
           "required": true,
@@ -172,6 +208,7 @@
                   "type": "object",
                   "properties": {
                     "token": { "type": "string" },
+                    "refresh_token": { "type": "string" },
                     "user": { "$ref": "#/components/schemas/User" }
                   }
                 }
@@ -183,10 +220,32 @@
         }
       }
     },
+    "/auth/refresh": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Renovar token de acesso",
+        "security": [{ "bearerAuth": [] }],
+        "description": "Usa o refresh token no header Authorization para gerar um novo access token.",
+        "responses": {
+          "200": {
+            "description": "Novo token gerado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "token": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "401": { "description": "Refresh token inválido ou expirado" }
+        }
+      }
+    },
     "/auth/me": {
       "get": {
-        "tags": ["Authentication"],
-        "summary": "Obter dados do usuário autenticado",
+        "tags": ["Auth"],
+        "summary": "Dados do usuário autenticado",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -201,27 +260,16 @@
         }
       }
     },
-    "/users": {
+
+    "/users/": {
       "get": {
         "tags": ["Users"],
         "summary": "Listar usuários",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 1 }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 20 }
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": { "type": "string" }
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } }
         ],
         "responses": {
           "200": {
@@ -233,8 +281,7 @@
                   "properties": {
                     "users": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
                     "total": { "type": "integer" },
-                    "pages": { "type": "integer" },
-                    "page": { "type": "integer" }
+                    "pages": { "type": "integer" }
                   }
                 }
               }
@@ -246,39 +293,19 @@
     "/users/{user_id}": {
       "get": {
         "tags": ["Users"],
-        "summary": "Obter usuário específico",
+        "summary": "Obter usuário por ID",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": {
-            "description": "Dados do usuário",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
-              }
-            }
-          }
+          "200": { "description": "Dados do usuário", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "404": { "description": "Usuário não encontrado" }
         }
       },
       "put": {
         "tags": ["Users"],
         "summary": "Atualizar usuário",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "content": {
             "application/json": {
@@ -295,37 +322,25 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Usuário atualizado",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
-              }
-            }
-          }
+          "200": { "description": "Usuário atualizado" },
+          "404": { "description": "Usuário não encontrado" }
         }
       },
       "delete": {
         "tags": ["Users"],
         "summary": "Deletar usuário",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": { "description": "Usuário deletado com sucesso" }
+          "200": { "description": "Usuário deletado" },
+          "404": { "description": "Usuário não encontrado" }
         }
       }
     },
     "/users/me/settings": {
       "put": {
         "tags": ["Users"],
-        "summary": "Atualizar configurações do usuário",
+        "summary": "Atualizar configurações do usuário logado",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "content": {
@@ -343,22 +358,13 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Configurações atualizadas",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Configurações atualizadas" } }
       }
     },
     "/users/me/devices": {
       "get": {
         "tags": ["Users"],
-        "summary": "Listar dispositivos do usuário",
+        "summary": "Listar dispositivos do usuário logado",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -391,10 +397,27 @@
         }
       }
     },
+    "/users/me/devices/{device_id}": {
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Revogar dispositivo específico",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "device_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Dispositivo revogado" } }
+      }
+    },
+    "/users/me/devices/revoke_all": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Revogar todos os dispositivos",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Todos os dispositivos revogados" } }
+      }
+    },
     "/users/me/achievements": {
       "get": {
         "tags": ["Users"],
-        "summary": "Obter conquistas do usuário",
+        "summary": "Conquistas do usuário logado",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -426,10 +449,11 @@
         }
       }
     },
+
     "/audios/upload": {
       "post": {
         "tags": ["Audios"],
-        "summary": "Fazer upload de áudio",
+        "summary": "Upload de áudio",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -438,13 +462,49 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  },
-                  "device_origin": {
-                    "type": "string",
-                    "default": "Web"
+                  "file": { "type": "string", "format": "binary" },
+                  "device_origin": { "type": "string", "default": "Web" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Áudio enviado com sucesso", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Audio" } } } },
+          "400": { "description": "Arquivo inválido ou ausente" }
+        }
+      }
+    },
+    "/audios/sync": {
+      "post": {
+        "tags": ["Audios"],
+        "summary": "Sincronizar metadados de áudio mobile (Cloud Sync)",
+        "description": "Permite que aplicativos mobile (iOS/Android) registrem no banco de dados central metadados de áudios que foram gravados e estão armazenados localmente no aparelho.\n\n### Comportamento de Autenticação\n- **Usuários logados**: Envie o header `Authorization: Bearer <TOKEN>`. O áudio será vinculado à conta real do usuário.\n- **Testes / Usuários Anônimos**: Não envie o header `Authorization`. O áudio será automaticamente vinculado à conta genérica `Guest` para facilitar os testes da equipe mobile sem precisar de tela de login.\n\n### O que essa rota faz?\n1. **Nenhum arquivo de áudio é trafegado** nesta requisição, economizando banda.\n2. Insere um registro na tabela `audios` sinalizando `processed: false` e identificando pelo `device_origin` que o arquivo ainda está fisicamente no celular (sem `file_path` no cloud).\n3. Retorna o ID gerado pelo banco para que o mobile possa salvar no armazenamento local e parear o arquivo com a nuvem futuramente.",
+        "security": [{ "bearerAuth": [] }, {}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["filename"],
+                "properties": {
+                  "filename": { "type": "string" },
+                  "duration_seconds": { "type": "number" },
+                  "size_bytes": { "type": "integer" },
+                  "device_origin": { "type": "string", "default": "Mobile" },
+                  "recorded_at": { "type": "string", "format": "date-time" }
+                }
+              },
+              "examples": {
+                "SincronizacaoComum": {
+                  "summary": "Exemplo do Payload Mobile",
+                  "value": {
+                    "filename": "gravacao_cliente.m4a",
+                    "duration_seconds": 125.5,
+                    "size_bytes": 1024500,
+                    "device_origin": "iPhone do Joao",
+                    "recorded_at": "2026-03-18T15:30:00Z"
                   }
                 }
               }
@@ -453,42 +513,99 @@
         },
         "responses": {
           "201": {
-            "description": "Áudio enviado com sucesso",
+            "description": "Metadados sincronizados e ID gerado retornado.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Audio" }
+                "schema": { "type": "object", "properties": { "audio": { "$ref": "#/components/schemas/Audio" } } },
+                "examples": {
+                  "Autenticado": {
+                    "summary": "Resposta com Usuário Logado",
+                    "value": {
+                      "audio": {
+                        "id": 142,
+                        "user_id": 5,
+                        "filename": "gravacao_cliente.m4a",
+                        "device_origin": "iPhone do Joao",
+                        "duration_seconds": 125.5,
+                        "size_bytes": 1024500,
+                        "processed": false,
+                        "transcribed": false,
+                        "favorite": false,
+                        "playlist_id": null
+                      }
+                    }
+                  },
+                  "Guest": {
+                    "summary": "Resposta Guest (Sem Header Authorization)",
+                    "value": {
+                      "audio": {
+                        "id": 143,
+                        "user_id": 2,
+                        "filename": "gravacao_cliente.m4a",
+                        "device_origin": "iPhone do Joao",
+                        "duration_seconds": 125.5,
+                        "size_bytes": 1024500,
+                        "processed": false,
+                        "transcribed": false,
+                        "favorite": false,
+                        "playlist_id": null
+                      }
+                    }
+                  }
+                }
               }
             }
-          }
+          },
+          "400": { "description": "Campo filename obrigatório" }
         }
       }
     },
-    "/audios": {
+    "/audios/batch-export": {
+      "post": {
+        "tags": ["Audios"],
+        "summary": "Exportar áudios em lote (ZIP)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "audio_ids": { "type": "array", "items": { "type": "integer" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Arquivo ZIP com os áudios selecionados", "content": { "application/zip": {} } }
+        }
+      }
+    },
+    "/audios/play/{audio_id}": {
+      "get": {
+        "tags": ["Audios"],
+        "summary": "Reproduzir áudio",
+        "parameters": [
+          { "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["original", "processed"], "default": "processed" } }
+        ],
+        "responses": {
+          "200": { "description": "Stream de áudio", "content": { "audio/wav": {} } },
+          "404": { "description": "Áudio não encontrado" }
+        }
+      }
+    },
+    "/audios/": {
       "get": {
         "tags": ["Audios"],
         "summary": "Listar áudios do usuário",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 1 }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 20 }
-          },
-          {
-            "name": "processed",
-            "in": "query",
-            "schema": { "type": "boolean" }
-          },
-          {
-            "name": "favorite",
-            "in": "query",
-            "schema": { "type": "boolean" }
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "processed", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "favorite", "in": "query", "schema": { "type": "boolean" } }
         ],
         "responses": {
           "200": {
@@ -500,8 +617,7 @@
                   "properties": {
                     "audios": { "type": "array", "items": { "$ref": "#/components/schemas/Audio" } },
                     "total": { "type": "integer" },
-                    "pages": { "type": "integer" },
-                    "page": { "type": "integer" }
+                    "pages": { "type": "integer" }
                   }
                 }
               }
@@ -513,39 +629,19 @@
     "/audios/{audio_id}": {
       "get": {
         "tags": ["Audios"],
-        "summary": "Obter áudio específico",
+        "summary": "Obter áudio por ID",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "audio_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": {
-            "description": "Dados do áudio",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Audio" }
-              }
-            }
-          }
+          "200": { "description": "Dados do áudio", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Audio" } } } },
+          "404": { "description": "Áudio não encontrado" }
         }
       },
       "put": {
         "tags": ["Audios"],
         "summary": "Atualizar áudio",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "audio_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "content": {
             "application/json": {
@@ -553,84 +649,44 @@
                 "type": "object",
                 "properties": {
                   "favorite": { "type": "boolean" },
-                  "playlist_id": { "type": "integer" },
+                  "playlist_id": { "type": "integer", "nullable": true },
                   "transcription_text": { "type": "string" }
                 }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Áudio atualizado",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Audio" }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Áudio atualizado" } }
       },
       "delete": {
         "tags": ["Audios"],
         "summary": "Deletar áudio",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "audio_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Áudio deletado com sucesso" }
-        }
+        "parameters": [{ "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Áudio deletado" } }
       }
     },
-    "/audios/play/{audio_id}": {
-      "get": {
+    "/audios/{audio_id}/reprocess": {
+      "post": {
         "tags": ["Audios"],
-        "summary": "Reproduzir áudio",
-        "parameters": [
-          {
-            "name": "audio_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          },
-          {
-            "name": "type",
-            "in": "query",
-            "schema": { "type": "string", "enum": ["original", "processed"], "default": "processed" }
-          }
-        ],
+        "summary": "Reprocessar áudio",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": {
-            "description": "Fluxo de áudio",
-            "content": {
-              "audio/wav": {}
-            }
-          }
+          "200": { "description": "Reprocessamento iniciado" },
+          "404": { "description": "Áudio não encontrado" }
         }
       }
     },
-    "/playlists": {
+
+    "/playlists/": {
       "get": {
         "tags": ["Playlists"],
-        "summary": "Listar playlists do usuário",
+        "summary": "Listar playlists",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 1 }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 20 }
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20 } }
         ],
         "responses": {
           "200": {
@@ -641,9 +697,7 @@
                   "type": "object",
                   "properties": {
                     "playlists": { "type": "array", "items": { "$ref": "#/components/schemas/Playlist" } },
-                    "total": { "type": "integer" },
-                    "pages": { "type": "integer" },
-                    "page": { "type": "integer" }
+                    "total": { "type": "integer" }
                   }
                 }
               }
@@ -653,7 +707,7 @@
       },
       "post": {
         "tags": ["Playlists"],
-        "summary": "Criar nova playlist",
+        "summary": "Criar playlist",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -670,69 +724,22 @@
             }
           }
         },
-        "responses": {
-          "201": {
-            "description": "Playlist criada com sucesso",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Playlist" }
-              }
-            }
-          }
-        }
+        "responses": { "201": { "description": "Playlist criada" } }
       }
     },
     "/playlists/{playlist_id}": {
       "get": {
         "tags": ["Playlists"],
-        "summary": "Obter playlist específica",
+        "summary": "Obter playlist por ID (inclui áudios)",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "playlist_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Dados da playlist",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "playlist": {
-                      "allOf": [
-                        { "$ref": "#/components/schemas/Playlist" },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "audios": { "type": "array", "items": { "$ref": "#/components/schemas/Audio" } }
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        "parameters": [{ "name": "playlist_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Dados da playlist com áudios" } }
       },
       "put": {
         "tags": ["Playlists"],
         "summary": "Atualizar playlist",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "playlist_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "playlist_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "content": {
             "application/json": {
@@ -747,48 +754,206 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Playlist atualizada",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Playlist" }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Playlist atualizada" } }
       },
       "delete": {
         "tags": ["Playlists"],
         "summary": "Deletar playlist",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "playlist_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Playlist deletada com sucesso" }
-        }
+        "parameters": [{ "name": "playlist_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Playlist deletada" } }
       }
     },
-    "/notifications": {
+    "/playlists/{playlist_id}/add-audio/{audio_id}": {
+      "post": {
+        "tags": ["Playlists"],
+        "summary": "Adicionar áudio à playlist",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "playlist_id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Áudio adicionado à playlist" } }
+      }
+    },
+    "/playlists/{playlist_id}/remove-audio/{audio_id}": {
+      "post": {
+        "tags": ["Playlists"],
+        "summary": "Remover áudio da playlist",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "playlist_id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Áudio removido da playlist" } }
+      }
+    },
+
+    "/stats/dashboard": {
       "get": {
-        "tags": ["Notifications"],
-        "summary": "Listar notificações",
+        "tags": ["Stats"],
+        "summary": "Estatísticas do dashboard",
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
-            "description": "Lista de notificações",
+            "description": "Dados de estatísticas gerais",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": { "$ref": "#/components/schemas/Notification" }
+                  "type": "object",
+                  "properties": {
+                    "total_audios": { "type": "integer" },
+                    "total_users": { "type": "integer" },
+                    "processed_audios": { "type": "integer" },
+                    "processed_pct": { "type": "number" },
+                    "recent_audios_week": { "type": "integer" },
+                    "streaming_sessions": { "type": "integer" },
+                    "system_status": { "type": "string" },
+                    "daily_counts": {
+                      "type": "array",
+                      "items": { "type": "object", "properties": { "day": { "type": "string" }, "count": { "type": "integer" } } }
+                    }
+                  }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/analytics": {
+      "get": {
+        "tags": ["Stats"],
+        "summary": "Dados de analytics detalhados",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Crescimento de usuários, retenção, uso de features",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_active_users": { "type": "integer" },
+                    "total_users": { "type": "integer" },
+                    "session_duration": { "type": "string" },
+                    "bounce_rate": { "type": "number" },
+                    "user_growth": { "type": "array", "items": { "type": "object" } },
+                    "features_usage": { "type": "array", "items": { "type": "object" } },
+                    "retention": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/status": {
+      "get": {
+        "tags": ["Stats"],
+        "summary": "Status do sistema",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Status dos serviços internos" } }
+      }
+    },
+
+    "/streaming/sessions": {
+      "get": {
+        "tags": ["Streaming"],
+        "summary": "Listar sessões de streaming ativas",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Lista de sessões ativas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "session_id": { "type": "string" },
+                          "user_id": { "type": "integer" },
+                          "device_name": { "type": "string" },
+                          "started_at": { "type": "string", "format": "date-time" },
+                          "chunks_received": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/events/": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "Listar eventos de auditoria",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "level", "in": "query", "schema": { "type": "string", "enum": ["info", "warning", "error"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de eventos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Events"],
+        "summary": "Registrar evento",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event_type": { "type": "string" },
+                  "level": { "type": "string", "enum": ["info", "warning", "error"], "default": "info" },
+                  "screen": { "type": "string" },
+                  "details_json": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Evento registrado" } }
+      }
+    },
+
+    "/notifications/": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Listar notificações do usuário",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Lista de notificações (próprias + globais)",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } }
               }
             }
           }
@@ -800,58 +965,36 @@
         "tags": ["Notifications"],
         "summary": "Marcar notificação como lida",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "notification_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "notification_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": { "description": "Notificação marcada como lida" }
+          "200": { "description": "Notificação marcada como lida" },
+          "404": { "description": "Notificação não encontrada" }
         }
       }
     },
-    "/admin/users": {
-      "get": {
-        "tags": ["Admin"],
-        "summary": "Listar usuários (Admin)",
+    "/notifications/read-all": {
+      "put": {
+        "tags": ["Notifications"],
+        "summary": "Marcar todas as notificações como lidas",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 1 }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 20 }
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": { "type": "string" }
-          },
-          {
-            "name": "account_type",
-            "in": "query",
-            "schema": { "type": "string" }
-          }
-        ],
+        "responses": { "200": { "description": "Todas as notificações marcadas como lidas" } }
+      }
+    },
+
+    "/support/": {
+      "get": {
+        "tags": ["Support"],
+        "summary": "Listar tickets de suporte",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
-            "description": "Lista de usuários",
+            "description": "Lista de tickets",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "users": { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
-                    "total": { "type": "integer" },
-                    "pages": { "type": "integer" },
-                    "page": { "type": "integer" }
+                    "tickets": { "type": "array", "items": { "$ref": "#/components/schemas/SupportTicket" } }
                   }
                 }
               }
@@ -860,8 +1003,80 @@
         }
       },
       "post": {
+        "tags": ["Support"],
+        "summary": "Abrir ticket de suporte",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["subject", "message"],
+                "properties": {
+                  "subject": { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Ticket criado" } }
+      }
+    },
+    "/support/{ticket_id}": {
+      "get": {
+        "tags": ["Support"],
+        "summary": "Obter ticket por ID (com mensagens)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "ticket_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Dados do ticket com histórico de mensagens" },
+          "404": { "description": "Ticket não encontrado" }
+        }
+      }
+    },
+    "/support/{ticket_id}/reply": {
+      "post": {
+        "tags": ["Support"],
+        "summary": "Responder a um ticket",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "ticket_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": { "message": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Resposta enviada" } }
+      }
+    },
+
+    "/admin/users": {
+      "get": {
         "tags": ["Admin"],
-        "summary": "Criar novo usuário (Admin)",
+        "summary": "Listar todos os usuários (Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "role", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Lista completa de usuários" },
+          "403": { "description": "Acesso restrito a administradores" }
+        }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Criar usuário (Admin)",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -873,38 +1088,23 @@
                 "properties": {
                   "name": { "type": "string" },
                   "email": { "type": "string", "format": "email" },
-                  "password": { "type": "string", "format": "password" },
-                  "account_type": { "type": "string", "enum": ["free", "premium", "admin"] }
+                  "password": { "type": "string" },
+                  "account_type": { "type": "string", "enum": ["free", "premium", "admin"], "default": "free" },
+                  "role": { "type": "string" }
                 }
               }
             }
           }
         },
-        "responses": {
-          "201": {
-            "description": "Usuário criado com sucesso",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
-              }
-            }
-          }
-        }
+        "responses": { "201": { "description": "Usuário criado pelo admin" } }
       }
     },
     "/admin/users/{user_id}": {
       "put": {
         "tags": ["Admin"],
-        "summary": "Atualizar usuário (Admin)",
+        "summary": "Atualizar qualquer usuário (Admin)",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
           "content": {
             "application/json": {
@@ -912,245 +1112,103 @@
                 "type": "object",
                 "properties": {
                   "name": { "type": "string" },
+                  "active": { "type": "boolean" },
                   "account_type": { "type": "string" },
-                  "active": { "type": "boolean" }
+                  "role": { "type": "string" }
                 }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Usuário atualizado",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/User" }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Usuário atualizado" } }
       },
       "delete": {
         "tags": ["Admin"],
-        "summary": "Deletar usuário (Admin)",
+        "summary": "Deletar qualquer usuário (Admin)",
         "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Usuário deletado com sucesso" }
-        }
+        "parameters": [{ "name": "user_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Usuário deletado" } }
       }
     },
     "/admin/reports/overview": {
       "get": {
         "tags": ["Admin"],
-        "summary": "Relatório geral do sistema",
+        "summary": "Relatório geral do sistema (Admin)",
         "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Dados do relatório",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "users": {
-                      "type": "object",
-                      "properties": {
-                        "total": { "type": "integer" },
-                        "active": { "type": "integer" },
-                        "admins": { "type": "integer" },
-                        "premium": { "type": "integer" },
-                        "free": { "type": "integer" }
-                      }
-                    },
-                    "audios": {
-                      "type": "object",
-                      "properties": {
-                        "total": { "type": "integer" },
-                        "processed": { "type": "integer" },
-                        "processed_pct": { "type": "number" },
-                        "transcribed": { "type": "integer" },
-                        "favorite": { "type": "integer" }
-                      }
-                    },
-                    "metrics": {
-                      "type": "object"
-                    },
-                    "today": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Totais de usuários, áudios, sessões e eventos" } }
       }
     },
     "/admin/reports/users": {
       "get": {
         "tags": ["Admin"],
-        "summary": "Relatório de usuários",
+        "summary": "Relatório de usuários (Admin)",
         "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Dados do relatório",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "daily_registrations": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "day": { "type": "string" },
-                          "count": { "type": "integer" }
-                        }
-                      }
-                    },
-                    "top_users": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": { "type": "integer" },
-                          "name": { "type": "string" },
-                          "email": { "type": "string" },
-                          "audio_count": { "type": "integer" }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Crescimento, retenção e distribuição de planos" } }
       }
     },
     "/admin/reports/audios": {
       "get": {
         "tags": ["Admin"],
-        "summary": "Relatório de áudios",
+        "summary": "Relatório de áudios (Admin)",
         "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Dados do relatório",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "daily_uploads": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "day": { "type": "string" },
-                          "count": { "type": "integer" }
-                        }
-                      }
-                    },
-                    "processing": {
-                      "type": "object"
-                    },
-                    "storage": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        "responses": { "200": { "description": "Processamento, transcrição e uso de armazenamento" } }
       }
     },
-    "/stats/dashboard": {
+    "/admin/reports/events": {
       "get": {
-        "tags": ["Statistics"],
-        "summary": "Dashboard de estatísticas",
-        "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Dados do dashboard",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/stats/analytics": {
-      "get": {
-        "tags": ["Statistics"],
-        "summary": "Análise detalhada",
-        "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Dados de análise",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/events": {
-      "get": {
-        "tags": ["Events"],
-        "summary": "Listar eventos",
+        "tags": ["Admin"],
+        "summary": "Relatório de eventos (Admin)",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 1 }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "schema": { "type": "integer", "default": 50 }
-          },
-          {
-            "name": "level",
-            "in": "query",
-            "schema": { "type": "string", "enum": ["info", "warning", "error"] }
-          }
+          { "name": "level", "in": "query", "schema": { "type": "string", "enum": ["info", "warning", "error"] } },
+          { "name": "days", "in": "query", "schema": { "type": "integer", "default": 7 } }
         ],
-        "responses": {
-          "200": {
-            "description": "Lista de eventos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "events": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } },
-                    "total": { "type": "integer" },
-                    "pages": { "type": "integer" }
-                  }
+        "responses": { "200": { "description": "Contagem e distribuição de eventos por nível" } }
+      }
+    },
+    "/admin/notifications/broadcast": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Enviar notificação global (Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title", "message"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "message": { "type": "string" },
+                  "type": { "type": "string", "default": "info" }
                 }
               }
             }
           }
-        }
+        },
+        "responses": { "201": { "description": "Notificação global enviada" } }
+      }
+    },
+    "/admin/notifications/{notification_id}": {
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Deletar notificação (Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "notification_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Notificação deletada" } }
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Logs de auditoria (Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Histórico de ações administrativas" } }
       }
     }
   }

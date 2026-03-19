@@ -5,14 +5,6 @@ import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
 import { audiosAPI, Audio } from "../lib/api";
 
-const MOCK_AUDIOS: Audio[] = [
-    { id: 1, user_id: 1, filename: "reuniao_produto_2026.wav", duration_seconds: 1847, size_bytes: 17825792, recorded_at: "2026-02-24T14:30:00Z", processed: true, transcribed: true, favorite: true, device_origin: "Samsung S23" },
-    { id: 2, user_id: 2, filename: "entrevista_cliente.wav", duration_seconds: 923, size_bytes: 8912896, recorded_at: "2026-02-24T11:15:00Z", processed: true, transcribed: false, favorite: false, device_origin: "iPhone 15" },
-    { id: 3, user_id: 3, filename: "notas_pessoais_24fev.wav", duration_seconds: 312, size_bytes: 3014656, recorded_at: "2026-02-24T09:00:00Z", processed: false, transcribed: false, favorite: false, device_origin: "Motorola Moto G" },
-    { id: 4, user_id: 1, filename: "podcast_ep12.wav", duration_seconds: 3612, size_bytes: 34836480, recorded_at: "2026-02-23T16:45:00Z", processed: true, transcribed: true, favorite: true, device_origin: "Samsung S23" },
-    { id: 5, user_id: 4, filename: "aula_ingles.wav", duration_seconds: 5400, size_bytes: 52224000, recorded_at: "2026-02-23T10:00:00Z", processed: true, transcribed: false, favorite: false, device_origin: "Xiaomi Redmi" },
-];
-
 function formatDuration(s: number) {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
@@ -47,7 +39,7 @@ export default function AudiosPage() {
         audiosAPI
             .list(params)
             .then((res) => { setAudios(res.audios); setTotal(res.total); setPages(res.pages); })
-            .catch(() => { setAudios(MOCK_AUDIOS); setTotal(MOCK_AUDIOS.length); setPages(1); })
+            .catch(() => { setAudios([]); setTotal(0); setPages(1); })
             .finally(() => setLoading(false));
     };
 
@@ -62,8 +54,8 @@ export default function AudiosPage() {
         setUploading(true);
         try {
             await audiosAPI.upload(file);
-            alert("Áudio enviado e processado com sucesso!");
-            fetchAudios(); // Recarrega a lista
+            alert("Áudio enviado com sucesso! O processamento de IA não está disponível neste ambiente.");
+            fetchAudios();
         } catch (error) {
             alert("Erro ao enviar áudio.");
             console.error(error);
@@ -91,8 +83,6 @@ export default function AudiosPage() {
             });
         } catch {
             alert("Erro ao remover.");
-            // Fallback for mock data
-            setAudios((prev) => prev.filter((a) => a.id !== id));
         } finally {
             setActionLoading(null);
         }
@@ -156,10 +146,10 @@ export default function AudiosPage() {
                 <Header title="Gerenciamento de Áudios" subtitle="Gerencie, filtre e visualize os arquivos processados pela IA" />
                 <div className="page-content">
                     <div className="stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-                        <div className="stat-card"><div className="stat-icon brand">🎙️</div><div className="stat-body"><div className="stat-label">Total</div><div className="stat-value">{total || MOCK_AUDIOS.length}</div></div></div>
-                        <div className="stat-card"><div className="stat-icon success">✅</div><div className="stat-body"><div className="stat-label">Processados</div><div className="stat-value">{audios.filter(a => a.processed).length || 4}</div></div></div>
-                        <div className="stat-card"><div className="stat-icon brand">📝</div><div className="stat-body"><div className="stat-label">Transcritos</div><div className="stat-value">{audios.filter(a => a.transcribed).length || 2}</div></div></div>
-                        <div className="stat-card"><div className="stat-icon warning">⭐</div><div className="stat-body"><div className="stat-label">Favoritos</div><div className="stat-value">{audios.filter(a => a.favorite).length || 2}</div></div></div>
+                        <div className="stat-card"><div className="stat-icon brand">🎙️</div><div className="stat-body"><div className="stat-label">Total</div><div className="stat-value">{total}</div></div></div>
+                        <div className="stat-card"><div className="stat-icon success">✅</div><div className="stat-body"><div className="stat-label">Processados</div><div className="stat-value">{audios.filter(a => a.processed).length}</div></div></div>
+                        <div className="stat-card"><div className="stat-icon brand">📝</div><div className="stat-body"><div className="stat-label">Transcritos</div><div className="stat-value">{audios.filter(a => a.transcribed).length}</div></div></div>
+                        <div className="stat-card"><div className="stat-icon warning">⭐</div><div className="stat-body"><div className="stat-label">Favoritos</div><div className="stat-value">{audios.filter(a => a.favorite).length}</div></div></div>
                     </div>
 
                     <div className="card">
@@ -190,14 +180,14 @@ export default function AudiosPage() {
                                         className="btn btn-primary"
                                         style={{ cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.7 : 1 }}
                                     >
-                                        {uploading ? "⏳ Processando..." : "⬆️ Fazer Upload"}
+                                        {uploading ? "⏳ Enviando..." : "⬆️ Fazer Upload"}
                                     </label>
                                 </div>
                                 <div className="search-bar" style={{ width: 240 }}>
                                     <span>🔍</span>
-                                    <input placeholder="Buscar arquivo..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                                    <input placeholder="Buscar arquivo..." value={search} onChange={(e) => setSearch(e.target.value)} disabled={loading} />
                                 </div>
-                                <select className="select" style={{ width: "auto" }} value={filter} onChange={(e) => setFilter(e.target.value)}>
+                                <select className="select" style={{ width: "auto" }} value={filter} onChange={(e) => setFilter(e.target.value)} disabled={loading}>
                                     <option value="all">Todos</option>
                                     <option value="processed">Processados</option>
                                     <option value="pending">Pendentes</option>
@@ -228,7 +218,7 @@ export default function AudiosPage() {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>Carregando...</td></tr>
+                                        <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: "var(--text-muted)" }}>Carregando dados da API...</td></tr>
                                     ) : filtered.length === 0 ? (
                                         <tr><td colSpan={9}><div className="empty-state"><div className="empty-icon">🎙️</div><div className="empty-title">Nenhum áudio encontrado</div></div></td></tr>
                                     ) : filtered.map((audio) => (
