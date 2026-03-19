@@ -292,10 +292,13 @@ export interface Audio {
   size_bytes: number;
   recorded_at: string;
   processed: boolean;
+  processed_path?: string | null;
+  processing_time_ms?: number | null;
+  processing_error?: string | null;
   transcribed: boolean;
-  transcription_text?: string;
+  transcription_text?: string | null;
   favorite: boolean;
-  playlist_id?: number;
+  playlist_id?: number | null;
   device_origin?: string;
 }
 

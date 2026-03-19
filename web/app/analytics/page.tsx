@@ -4,61 +4,35 @@ import Sidebar from "../components/Sidebar";
 import Header from "../components/Header";
 import { statsAPI, AnalyticsData } from "../lib/api";
 
-const MOCK: AnalyticsData = {
-    total_active_users: 24592,
-    total_users: 31820,
-    session_duration: "4m 32s",
-    bounce_rate: 42.8,
-    total_audios: 1284,
-    favorite_audios: 156,
-    transcribed_audios: 512,
-    user_growth: [
-        { month: "Set", users: 120 },
-        { month: "Out", users: 195 },
-        { month: "Nov", users: 280 },
-        { month: "Dez", users: 340 },
-        { month: "Jan", users: 420 },
-        { month: "Fev", users: 487 },
-    ],
-    features_usage: [
-        { name: "Gravar Audio", usage: 100 },
-        { name: "Limpar Ruido", usage: 90 },
-        { name: "Ouvir Audio", usage: 80 },
-        { name: "Criar Playlist", usage: 50 },
-        { name: "Transcrever", usage: 40 },
-        { name: "Marcar Favorito", usage: 30 },
-    ],
-    retention: [
-        { day: "Dia 1", rate: 80 },
-        { day: "Dia 7", rate: 50 },
-        { day: "Dia 30", rate: 30 },
-    ],
-    device_performance: [
-        { device: "Samsung S23", time: "0.15s", pct: 90 },
-        { device: "Xiaomi Redmi Note 11", time: "0.25s", pct: 70 },
-        { device: "Motorola Moto G8", time: "0.45s", pct: 45 },
-    ],
+const EMPTY_DATA: AnalyticsData = {
+    total_active_users: 0,
+    total_users: 0,
+    session_duration: "0m 0s",
+    bounce_rate: 0,
+    total_audios: 0,
+    favorite_audios: 0,
+    transcribed_audios: 0,
+    user_growth: [],
+    features_usage: [],
+    retention: [],
+    device_performance: [],
 };
 
 export default function AnalyticsPage() {
-    const [data, setData] = useState<AnalyticsData>(MOCK);
+    const [data, setData] = useState<AnalyticsData>(EMPTY_DATA);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         statsAPI.analytics()
             .then((res) => {
-                // If we get empty/zero data, fallback to mock for visual purposes
-                if (res.total_users === 0) {
-                    setData(MOCK);
-                } else {
-                    setData(res);
-                }
+                // Removemos o uso de mocks em produção.
+                setData(res);
             })
-            .catch(() => setData(MOCK))
+            .catch(() => setData(EMPTY_DATA))
             .finally(() => setLoading(false));
     }, []);
 
-    const maxGrowth = Math.max(...data.user_growth.map((g) => g.users), 1);
+    const maxGrowth = Math.max(...(data.user_growth || []).map((g) => g.users), 1);
 
     const handleExportCSV = () => {
         const rows = [
@@ -70,10 +44,10 @@ export default function AnalyticsPage() {
             ["Total Audios", data.total_audios],
             [],
             ["Mes", "Novos Usuarios"],
-            ...data.user_growth.map(g => [g.month, g.users]),
+            ...(data.user_growth || []).map(g => [g.month, g.users]),
             [],
             ["Funcionalidade", "Uso (%)"],
-            ...data.features_usage.map(f => [f.name, f.usage])
+            ...(data.features_usage || []).map(f => [f.name, f.usage])
         ];
 
         const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
@@ -91,6 +65,20 @@ export default function AnalyticsPage() {
         window.print();
     };
 
+    if (loading) {
+        return (
+            <div className="app-layout">
+                <Sidebar />
+                <main className="app-main">
+                    <Header title="Analytics Avançado" subtitle="Carregando estatísticas da API..." />
+                    <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+                        <div style={{ color: "var(--text-muted)" }}>⏳ Obtendo dados em tempo real...</div>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
     return (
         <div className="app-layout">
             <Sidebar />
@@ -107,32 +95,32 @@ export default function AnalyticsPage() {
                             <div className="stat-icon brand">👥</div>
                             <div className="stat-body">
                                 <div className="stat-label">Total Active Users</div>
-                                <div className="stat-value">{data.total_active_users.toLocaleString()}</div>
-                                <div className="stat-delta">↑ +12% vs mês passado</div>
+                                <div className="stat-value">{data.total_active_users?.toLocaleString() || 0}</div>
+                                <div className="stat-delta text-muted">— calculando</div>
                             </div>
                         </div>
                         <div className="stat-card">
                             <div className="stat-icon success">⏱️</div>
                             <div className="stat-body">
                                 <div className="stat-label">Session Duration</div>
-                                <div className="stat-value">{data.session_duration}</div>
-                                <div className="stat-delta">↑ +5% vs mês passado</div>
+                                <div className="stat-value">{data.session_duration || "0m 0s"}</div>
+                                <div className="stat-delta text-muted">— calculando</div>
                             </div>
                         </div>
                         <div className="stat-card">
                             <div className="stat-icon warning">📉</div>
                             <div className="stat-body">
                                 <div className="stat-label">Bounce Rate</div>
-                                <div className="stat-value">{data.bounce_rate}%</div>
-                                <div className="stat-delta neg">↑ +2% vs mês passado</div>
+                                <div className="stat-value">{data.bounce_rate || 0}%</div>
+                                <div className="stat-delta text-muted">— calculando</div>
                             </div>
                         </div>
                         <div className="stat-card">
                             <div className="stat-icon info">🎙️</div>
                             <div className="stat-body">
                                 <div className="stat-label">Total Áudios</div>
-                                <div className="stat-value">{data.total_audios.toLocaleString()}</div>
-                                <div className="stat-delta">↑ +8% essa semana</div>
+                                <div className="stat-value">{data.total_audios?.toLocaleString() || 0}</div>
+                                <div className="stat-delta text-muted">— calculando</div>
                             </div>
                         </div>
                     </div>
@@ -145,16 +133,20 @@ export default function AnalyticsPage() {
                                 <span className="badge badge-brand">Últimos 6 meses</span>
                             </div>
                             <div className="bar-chart">
-                                {data.user_growth.map((g, i) => (
-                                    <div key={i} className="bar-item">
-                                        <div
-                                            className={`bar ${i === data.user_growth.length - 1 ? "active" : ""}`}
-                                            style={{ height: `${(g.users / maxGrowth) * 100}%` }}
-                                            title={`${g.month}: ${g.users} usuários`}
-                                        />
-                                        <span className="bar-label">{g.month}</span>
-                                    </div>
-                                ))}
+                                {data.user_growth && data.user_growth.length > 0 ? (
+                                    data.user_growth.map((g, i) => (
+                                        <div key={i} className="bar-item">
+                                            <div
+                                                className={`bar ${i === data.user_growth.length - 1 ? "active" : ""}`}
+                                                style={{ height: `${(g.users / maxGrowth) * 100}%` }}
+                                                title={`${g.month}: ${g.users} usuários`}
+                                            />
+                                            <span className="bar-label">{g.month}</span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Sem dados de crescimento para exibir.</div>
+                                )}
                             </div>
                         </div>
 
@@ -164,17 +156,21 @@ export default function AnalyticsPage() {
                                 <div className="card-title">Funcionalidades Mais Usadas</div>
                             </div>
                             <div style={{ marginTop: 8 }}>
-                                {data.features_usage.map((f, i) => (
-                                    <div key={i} className="progress-wrap">
-                                        <div className="progress-header">
-                                            <span className="progress-name">{f.name}</span>
-                                            <span className="progress-pct">{f.usage}%</span>
+                                {data.features_usage && data.features_usage.length > 0 ? (
+                                    data.features_usage.map((f, i) => (
+                                        <div key={i} className="progress-wrap">
+                                            <div className="progress-header">
+                                                <span className="progress-name">{f.name}</span>
+                                                <span className="progress-pct">{f.usage}%</span>
+                                            </div>
+                                            <div className="progress-track">
+                                                <div className="progress-fill" style={{ width: `${f.usage}%` }} />
+                                            </div>
                                         </div>
-                                        <div className="progress-track">
-                                            <div className="progress-fill" style={{ width: `${f.usage}%` }} />
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))
+                                ) : (
+                                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Métricas insuficientes.</div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -185,26 +181,37 @@ export default function AnalyticsPage() {
                             <div className="card-title">Retention Heatmap</div>
                             <div className="card-subtitle">User return rates over 30 days</div>
                         </div>
-                        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                            {data.retention.map((r, i) => (
-                                <div key={i} style={{ flex: 1, minWidth: 160, background: "var(--bg-muted)", borderRadius: "var(--radius)", padding: 20, textAlign: "center" }}>
-                                    <div style={{ fontSize: 28, fontWeight: 800, color: i === 0 ? "var(--success)" : i === 1 ? "var(--warning)" : "var(--danger)" }}>{r.rate}%</div>
-                                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{r.day} voltam</div>
-                                </div>
-                            ))}
-                            <div style={{ flex: 2, minWidth: 200 }}>
-                                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "var(--text-primary)" }}>Performance por Dispositivo</div>
-                                {(data.device_performance || []).map((d, i) => (
-                                    <div key={i} className="progress-wrap">
-                                        <div className="progress-header">
-                                            <span className="progress-name">{d.device}</span>
-                                            <span className="progress-pct">{d.time}</span>
-                                        </div>
-                                        <div className="progress-track">
-                                            <div className="progress-fill" style={{ width: `${d.pct}%`, background: i === 0 ? "var(--success)" : i === 1 ? "var(--warning)" : "var(--danger)" }} />
-                                        </div>
+                        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: 'center' }}>
+                            {data.retention && data.retention.length > 0 ? (
+                                data.retention.map((r, i) => (
+                                    <div key={i} style={{ flex: 1, minWidth: 160, background: "var(--bg-muted)", borderRadius: "var(--radius)", padding: 20, textAlign: "center" }}>
+                                        <div style={{ fontSize: 28, fontWeight: 800, color: i === 0 ? "var(--success)" : i === 1 ? "var(--warning)" : "var(--danger)" }}>{r.rate}%</div>
+                                        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{r.day} voltam</div>
                                     </div>
-                                ))}
+                                ))
+                            ) : (
+                                <div style={{ flex: 1, minWidth: 160, background: "var(--card-bg)", color: "var(--text-muted)", borderRadius: "var(--radius)", padding: 20, textAlign: "center" }}>
+                                    <div style={{ fontSize: 14 }}>Coletando dados de retenção (Dia 1 a Dia 30)...</div>
+                                </div>
+                            )}
+
+                            <div style={{ flex: 2, minWidth: 200, paddingLeft: 20, borderLeft: "1px solid var(--border)" }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: "var(--text-primary)" }}>Performance por Dispositivo</div>
+                                {data.device_performance && data.device_performance.length > 0 ? (
+                                    data.device_performance.map((d, i) => (
+                                        <div key={i} className="progress-wrap">
+                                            <div className="progress-header">
+                                                <span className="progress-name">{d.device}</span>
+                                                <span className="progress-pct">{d.time}</span>
+                                            </div>
+                                            <div className="progress-track">
+                                                <div className="progress-fill" style={{ width: `${d.pct}%`, background: i === 0 ? "var(--success)" : i === 1 ? "var(--warning)" : "var(--danger)" }} />
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Aguardando sessões de usuários para calcular performance do lado do cliente.</div>
+                                )}
                             </div>
                         </div>
                     </div>

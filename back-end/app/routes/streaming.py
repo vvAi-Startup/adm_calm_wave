@@ -17,6 +17,14 @@ except ImportError:
 
 active_sessions = {}
 
+def _get_valid_user_id():
+    try:
+        resp = supabase.table('users').select('id').order('id').limit(1).execute()
+        if resp.data:
+            return resp.data[0]['id']
+    except Exception:
+        pass
+    return 1
 
 @streaming_bp.route("/sessions", methods=["GET"])
 def get_sessions():
@@ -63,8 +71,9 @@ def handle_start_stream(data):
         "messages": 0, "file_path": file_path, "filename": filename,
     }
     try:
+        uid = _get_valid_user_id()
         supabase.table('events').insert({
-            "user_id": 1, "event_type": "STREAMING_START", "level": "info", "screen": "streaming",
+            "user_id": uid, "event_type": "STREAMING_START", "level": "info", "screen": "streaming",
             "details_json": json.dumps({"session_id": sid, "device": data.get("device", "Unknown")}),
         }).execute()
     except Exception as e:
@@ -101,7 +110,7 @@ def handle_stop_stream():
     if sid in active_sessions:
         session_data = active_sessions[sid]
         try:
-            user_id = 1
+            user_id = _get_valid_user_id()
             file_path = session_data["file_path"]
             size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             duration = int(time.time() - session_data["start_time"])
@@ -121,7 +130,7 @@ def handle_stop_stream():
                         "size_bytes": size_bytes, "audio_id": audio.get('id'),
                     }),
                 }).execute()
-                if denoiser and denoiser.model is not None:
+                if denoiser and denoiser.ensure_model_loaded():
                     try:
                         start_p = time.time()
                         with open(file_path, 'rb') as f:
@@ -136,15 +145,14 @@ def handle_stop_stream():
                             "processing_time_ms": int((time.time() - start_p) * 1000),
                         }
                         if transcribe_audio:
-                            u_r = supabase.table('users').select('transcription_language').eq('id', user_id).execute()
-                            lang = u_r.data[0].get('transcription_language', 'pt-BR') if u_r.data else 'pt-BR'
+                            lang = 'pt-BR'
                             tx = transcribe_audio(ppath, language=lang)
                             if tx:
                                 update_data["transcribed"] = True
                                 update_data["transcription_text"] = tx
                         supabase.table('audios').update(update_data).eq('id', audio['id']).execute()
                         notif = supabase.table('notifications').insert({
-                            "user_id": 1,
+                            "user_id": user_id,
                             "title": "Audio Processado pela IA",
                             "message": f"A transmissao ao vivo do dispositivo {session_data['device']} foi processada.",
                             "type": "success", "is_read": False,
