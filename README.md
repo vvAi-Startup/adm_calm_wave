@@ -111,4 +111,4 @@ A API trabalha via requisições REST, rotas protegidas (na maioria) via token J
 **Frontend**
 - Framework React: `Next.js`
 - Design e UI: `Tailwind CSS`
-- Player Customizado: `wavesurfer.js`
+- Player Customizado: `wavesurfer.js` 

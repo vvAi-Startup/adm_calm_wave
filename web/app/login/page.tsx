@@ -6,8 +6,8 @@ import { useAuth } from "../context/AuthContext";
 export default function LoginPage() {
     const { login } = useAuth();
     const router = useRouter();
-    const [email, setEmail] = useState("admin@calmwave.com");
-    const [password, setPassword] = useState("admin123");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -19,7 +19,7 @@ export default function LoginPage() {
             await login(email, password);
             router.push("/dashboard");
         } catch {
-            setError("Email ou senha inválidos. Tente admin@calmwave.com / admin123");
+            setError("Email ou senha inválidos.");
         } finally {
             setLoading(false);
         }
@@ -50,7 +50,7 @@ export default function LoginPage() {
                                     className="input"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="admin@calmwave.com"
+                                    placeholder="seu@email.com"
                                     required
                                 />
                             </div>
@@ -74,11 +74,7 @@ export default function LoginPage() {
                                 {loading ? "Entrando..." : "Entrar"}
                             </button>
                         </form>
-                        <div className="login-links">
-                            <a href="#">Esqueceu a senha?</a>
-                            &nbsp;·&nbsp;
-                            Não tem conta? <a href="#">Cadastre-se</a>
-                        </div>
+
                     </div>
                 </div>
             </div>
