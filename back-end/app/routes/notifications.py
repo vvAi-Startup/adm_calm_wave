@@ -49,3 +49,37 @@ def mark_all_read():
         f'user_id.eq.{current_user_id},user_id.is.null'
     ).eq('is_read', False).execute()
     return jsonify({"message": "Todas as notificacoes lidas"}), 200
+
+
+@notifications_bp.route('/broadcast', methods=['POST'])
+@jwt_required()
+def broadcast():
+    """Admin: cria uma notificação global (user_id = null) visível a todos."""
+    current_user_id = get_jwt_identity()
+
+    # Verifica se é admin
+    user_resp = supabase.table('users').select('role').eq('id', current_user_id).execute()
+    if not user_resp.data or user_resp.data[0].get('role') != 'admin':
+        return jsonify({"error": "Acesso restrito a administradores"}), 403
+
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    message = (data.get('message') or '').strip()
+    n_type = data.get('type', 'info')
+
+    if not title or not message:
+        return jsonify({"error": "title e message são obrigatórios"}), 400
+
+    if n_type not in ('info', 'success', 'warning', 'danger'):
+        n_type = 'info'
+
+    supabase.table('notifications').insert({
+        'user_id': None,
+        'title': title,
+        'message': message,
+        'type': n_type,
+        'is_read': False,
+    }).execute()
+
+    return jsonify({"message": "Notificação global enviada com sucesso"}), 201
+
