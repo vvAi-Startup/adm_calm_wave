@@ -22,8 +22,9 @@ back-end/.venv/
 back-end/instance/
 back-end/.pytest_cache/
 back-end/.coverage
-back-end/htmlcov/
-
+back-end/htmlcov/       
+*.env
+.env
 # Uploads / Data
 back-end/uploads/
 uploads/
