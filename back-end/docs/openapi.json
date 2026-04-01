@@ -53,10 +53,12 @@
           "id": { "type": "integer" },
           "user_id": { "type": "integer" },
           "filename": { "type": "string" },
+          "file_path": { "type": "string", "format": "uri", "description": "URL pública do arquivo original no Cloudinary" },
           "duration_seconds": { "type": "number" },
           "size_bytes": { "type": "integer" },
           "recorded_at": { "type": "string", "format": "date-time" },
           "processed": { "type": "boolean" },
+          "processed_path": { "type": "string", "format": "uri", "nullable": true, "description": "URL pública do arquivo processado no Cloudinary" },
           "processing_time_ms": { "type": "integer" },
           "processing_error": { "type": "string", "nullable": true },
           "transcribed": { "type": "boolean" },
@@ -454,6 +456,7 @@
       "post": {
         "tags": ["Audios"],
         "summary": "Upload de áudio",
+        "description": "Faz upload do arquivo, salva no Cloudinary e registra os metadados no banco. O processamento com IA ocorre em background.",
         "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
@@ -470,7 +473,19 @@
           }
         },
         "responses": {
-          "201": { "description": "Áudio enviado com sucesso", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Audio" } } } },
+          "201": {
+            "description": "Áudio enviado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "audio": { "$ref": "#/components/schemas/Audio" }
+                  }
+                }
+              }
+            }
+          },
           "400": { "description": "Arquivo inválido ou ausente" }
         }
       }
@@ -478,34 +493,23 @@
     "/audios/sync": {
       "post": {
         "tags": ["Audios"],
-        "summary": "Sincronizar metadados de áudio mobile (Cloud Sync)",
-        "description": "Permite que aplicativos mobile (iOS/Android) registrem no banco de dados central metadados de áudios que foram gravados e estão armazenados localmente no aparelho.\n\n### Comportamento de Autenticação\n- **Usuários logados**: Envie o header `Authorization: Bearer <TOKEN>`. O áudio será vinculado à conta real do usuário.\n- **Testes / Usuários Anônimos**: Não envie o header `Authorization`. O áudio será automaticamente vinculado à conta genérica `Guest` para facilitar os testes da equipe mobile sem precisar de tela de login.\n\n### O que essa rota faz?\n1. **Nenhum arquivo de áudio é trafegado** nesta requisição, economizando banda.\n2. Insere um registro na tabela `audios` sinalizando `processed: false` e identificando pelo `device_origin` que o arquivo ainda está fisicamente no celular (sem `file_path` no cloud).\n3. Retorna o ID gerado pelo banco para que o mobile possa salvar no armazenamento local e parear o arquivo com a nuvem futuramente.",
-        "security": [{ "bearerAuth": [] }, {}],
+        "summary": "Sincronizar áudio offline",
+        "description": "Recebe o arquivo original (`file`) e opcionalmente o arquivo já processado (`processed_file`), envia para o Cloudinary e salva o registro no banco.",
+        "security": [{ "bearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
+            "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["filename"],
+                "required": ["file"],
                 "properties": {
-                  "filename": { "type": "string" },
+                  "file": { "type": "string", "format": "binary" },
+                  "processed_file": { "type": "string", "format": "binary" },
                   "duration_seconds": { "type": "number" },
-                  "size_bytes": { "type": "integer" },
-                  "device_origin": { "type": "string", "default": "Mobile" },
-                  "recorded_at": { "type": "string", "format": "date-time" }
-                }
-              },
-              "examples": {
-                "SincronizacaoComum": {
-                  "summary": "Exemplo do Payload Mobile",
-                  "value": {
-                    "filename": "gravacao_cliente.m4a",
-                    "duration_seconds": 125.5,
-                    "size_bytes": 1024500,
-                    "device_origin": "iPhone do Joao",
-                    "recorded_at": "2026-03-18T15:30:00Z"
-                  }
+                  "processing_time_ms": { "type": "integer" },
+                  "device_origin": { "type": "string", "default": "Mobile App (Offline Sync)" },
+                  "transcription_text": { "type": "string" }
                 }
               }
             }
@@ -513,50 +517,20 @@
         },
         "responses": {
           "201": {
-            "description": "Metadados sincronizados e ID gerado retornado.",
+            "description": "Áudio sincronizado com sucesso.",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "properties": { "audio": { "$ref": "#/components/schemas/Audio" } } },
-                "examples": {
-                  "Autenticado": {
-                    "summary": "Resposta com Usuário Logado",
-                    "value": {
-                      "audio": {
-                        "id": 142,
-                        "user_id": 5,
-                        "filename": "gravacao_cliente.m4a",
-                        "device_origin": "iPhone do Joao",
-                        "duration_seconds": 125.5,
-                        "size_bytes": 1024500,
-                        "processed": false,
-                        "transcribed": false,
-                        "favorite": false,
-                        "playlist_id": null
-                      }
-                    }
-                  },
-                  "Guest": {
-                    "summary": "Resposta Guest (Sem Header Authorization)",
-                    "value": {
-                      "audio": {
-                        "id": 143,
-                        "user_id": 2,
-                        "filename": "gravacao_cliente.m4a",
-                        "device_origin": "iPhone do Joao",
-                        "duration_seconds": 125.5,
-                        "size_bytes": 1024500,
-                        "processed": false,
-                        "transcribed": false,
-                        "favorite": false,
-                        "playlist_id": null
-                      }
-                    }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "audio": { "$ref": "#/components/schemas/Audio" },
+                    "message": { "type": "string" }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Campo filename obrigatório" }
+          "400": { "description": "Arquivo inválido ou ausente" }
         }
       }
     },
@@ -586,11 +560,13 @@
       "get": {
         "tags": ["Audios"],
         "summary": "Reproduzir áudio",
+        "description": "Quando o arquivo estiver no Cloudinary, a rota responde com redirecionamento (302) para a URL do asset.",
         "parameters": [
           { "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } },
           { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["original", "processed"], "default": "processed" } }
         ],
         "responses": {
+          "302": { "description": "Redirecionamento para URL do áudio no Cloudinary" },
           "200": { "description": "Stream de áudio", "content": { "audio/wav": {} } },
           "404": { "description": "Áudio não encontrado" }
         }
@@ -673,7 +649,7 @@
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "name": "audio_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
-          "200": { "description": "Reprocessamento iniciado" },
+          "202": { "description": "Reprocessamento enfileirado" },
           "404": { "description": "Áudio não encontrado" }
         }
       }

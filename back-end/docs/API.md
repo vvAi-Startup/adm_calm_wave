@@ -196,6 +196,8 @@ Retorna as conquistas do usuário.
 
 Envia um arquivo de áudio para processamento.
 
+> O arquivo original é armazenado no **Cloudinary** e o processamento com IA roda em background.
+
 **Request (multipart/form-data):**
 - `file`: Arquivo de áudio (WAV, MP3, etc)
 - `device_origin` (opcional): Origem do dispositivo (padrão: "Web")
@@ -259,6 +261,8 @@ Remove um áudio.
 **GET** `/audios/play/{audio_id}?type=processed`
 
 Transmite o arquivo de áudio.
+
+> Quando o áudio estiver no Cloudinary, essa rota retorna **302 Redirect** para a URL pública do arquivo.
 
 **Parameters:**
 - `type` (string): "original" ou "processed" (padrão: "processed")
@@ -633,12 +637,12 @@ O sistema suporta streaming de áudio em tempo real via WebSocket. Veja `streami
   "id": 1,
   "user_id": 1,
   "filename": "gravacao.wav",
-  "file_path": "/uploads/gravacao.wav",
+  "file_path": "https://res.cloudinary.com/dtvgr3v4u/video/upload/v1712345678/calmwave/audios/original/gravacao.wav",
   "duration_seconds": 120,
   "size_bytes": 2048000,
   "recorded_at": "2024-01-01T10:00:00",
   "processed": true,
-  "processed_path": "/uploads/processed_gravacao.wav",
+  "processed_path": "https://res.cloudinary.com/dtvgr3v4u/video/upload/v1712345689/calmwave/audios/processed/processed_gravacao.wav",
   "processing_time_ms": 1200,
   "transcribed": true,
   "transcription_text": "Texto da transcrição...",
