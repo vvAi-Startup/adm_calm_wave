@@ -202,25 +202,15 @@ export default function AudioDetailsPage() {
                                     </>
                                 ) : (audio as any).processing_error ? (
                                     <div style={{ padding: 24, textAlign: 'center' }}>
-                                        {(audio as any).processing_error?.includes('Modelo IA') ? (
-                                            <>
-                                                <div style={{ fontSize: 32, marginBottom: 8 }}>⚙️</div>
-                                                <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-main)' }}>Processamento de IA indisponível</div>
-                                                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>O denoising por IA está desativado neste ambiente de deploy. O áudio original continua disponível normalmente.</div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div style={{ fontSize: 32, marginBottom: 8 }}>❌</div>
-                                                <div style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: 4 }}>Erro no processamento</div>
-                                                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{(audio as any).processing_error}</div>
-                                            </>
-                                        )}
+                                        <div style={{ fontSize: 32, marginBottom: 8 }}>❌</div>
+                                        <div style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: 4 }}>Erro no processamento</div>
+                                        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{(audio as any).processing_error}</div>
                                     </div>
                                 ) : (
                                     <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                                         <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-                                        <div style={{ fontWeight: 600, marginBottom: 4 }}>Aguardando processamento...</div>
-                                        <div style={{ fontSize: 13 }}>A página atualiza automaticamente.</div>
+                                        <div style={{ fontWeight: 600, marginBottom: 4 }}>Processando com IA...</div>
+                                        <div style={{ fontSize: 13 }}>A página atualiza automaticamente quando concluir.</div>
                                     </div>
                                 )}
                             </div>

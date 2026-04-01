@@ -29,9 +29,8 @@ def create_app():
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
 
-    # API pública — consumida por web, mobile e outros clientes
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    CORS(app, resources={r"/api/*": {"origins": [frontend_url, "http://localhost:5000"]}})
 
     db.init_app(app)
     from app.supabase_ext import init_supabase
@@ -81,23 +80,11 @@ def create_app():
         return jsonify({"error": "Requisição inválida", "status": 400}), 400
 
     
-    # Servir openapi.json com o servidor correto baseado no host da requisição
+    # Servir arquivo estático openapi.json
     @app.route('/api/docs/openapi.json')
     def swagger_json():
-        import json as _json
-        from flask import jsonify as _jsonify
         docs_dir = os.path.abspath(os.path.join(app.root_path, '..', 'docs'))
-        with open(os.path.join(docs_dir, 'openapi.json'), 'r', encoding='utf-8') as f:
-            spec = _json.load(f)
-        scheme = 'https' if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https' else 'http'
-        current_url = f"{scheme}://{request.host}/api"
-        servers = [{"url": current_url, "description": "Servidor Atual"}]
-        if request.host != 'localhost:5000':
-            servers.append({"url": "http://localhost:5000/api", "description": "Local (dev)"})
-        spec['servers'] = servers
-        return _jsonify(spec)
-
-
+        return send_from_directory(docs_dir, 'openapi.json')
 
     # Configurar Swagger UI
     SWAGGER_URL = '/docs'
