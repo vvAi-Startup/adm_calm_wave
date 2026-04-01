@@ -1,10 +1,17 @@
-from flask import Blueprint, request, jsonify, current_app, send_file
+from flask import Blueprint, request, jsonify, send_file, redirect
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import socketio
 from app.supabase_ext import supabase
-import os, time, io, zipfile, json, threading
+import os, io, zipfile, json, threading
+from tempfile import NamedTemporaryFile
 from werkzeug.utils import secure_filename
 from app.services.push_service import PushService
+from app.services.cloudinary_service import (
+    upload_audio_bytes,
+    read_audio_bytes,
+    is_remote_asset,
+    delete_asset,
+)
 
 audios_bp = Blueprint("audios", __name__)
 
@@ -28,7 +35,11 @@ def play_audio(audio_id):
         file_path = audio.get('file_path')
     else:
         file_path = audio.get('processed_path') if audio.get('processed') and audio.get('processed_path') else audio.get('file_path')
-    if not file_path or not os.path.exists(file_path):
+    if not file_path:
+        return jsonify({"error": "Arquivo de audio nao encontrado"}), 404
+    if is_remote_asset(file_path):
+        return redirect(file_path, code=302)
+    if not os.path.exists(file_path):
         return jsonify({"error": "Arquivo de audio nao encontrado"}), 404
     response = send_file(file_path, mimetype="audio/wav", conditional=True)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -49,20 +60,31 @@ def upload_audio():
         return jsonify({"error": "Formato nao suportado."}), 400
 
     user_id = get_jwt_identity()
-    upload_dir = os.path.join(current_app.root_path, '..', 'uploads')
-    os.makedirs(upload_dir, exist_ok=True)
     filename = secure_filename(file.filename)
-    file_path = os.path.join(upload_dir, filename)
-    file.save(file_path)
+    audio_bytes = file.read()
+    if not audio_bytes:
+        return jsonify({"error": "Arquivo vazio"}), 400
 
-    # Calcular duração real do áudio
-    duration_sec = int(get_audio_duration(file_path))
+    # Calcular duração real do áudio em arquivo temporário
+    with NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1] or ".wav") as tmp:
+        tmp.write(audio_bytes)
+        temp_path = tmp.name
+    try:
+        duration_sec = int(get_audio_duration(temp_path))
+    finally:
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+    upload_res = upload_audio_bytes(audio_bytes, filename=filename, folder="calmwave/audios/original")
+    file_path = upload_res["secure_url"]
 
     audio_resp = supabase.table('audios').insert({
         "user_id": int(user_id),
         "filename": filename,
         "file_path": file_path,
-        "size_bytes": os.path.getsize(file_path),
+        "size_bytes": len(audio_bytes),
         "duration_seconds": duration_sec,
         "device_origin": request.form.get("device_origin", "Web"),
         "processed": False,
@@ -107,23 +129,26 @@ def sync_audio_offline():
     if file.filename == '' or not file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".ogg", ".aac")):
         return jsonify({"error": "Arquivo invalido"}), 400
     user_id = get_jwt_identity()
-    upload_dir = os.path.join(current_app.root_path, '..', 'uploads')
-    os.makedirs(upload_dir, exist_ok=True)
     filename = secure_filename(file.filename)
-    file_path = os.path.join(upload_dir, "sync_" + filename)
-    file.save(file_path)
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({"error": "Arquivo vazio"}), 400
+    original_upload = upload_audio_bytes(file_bytes, filename=f"sync_{filename}", folder="calmwave/audios/original")
+    file_path = original_upload["secure_url"]
     processed_path, processed = None, False
     if 'processed_file' in request.files:
         pf = request.files['processed_file']
         if pf.filename != '':
             pn = "processed_sync_" + secure_filename(pf.filename)
-            processed_path = os.path.join(upload_dir, pn)
-            pf.save(processed_path)
-            processed = True
+            pf_bytes = pf.read()
+            if pf_bytes:
+                processed_upload = upload_audio_bytes(pf_bytes, filename=pn, folder="calmwave/audios/processed")
+                processed_path = processed_upload["secure_url"]
+                processed = True
     transcription = request.form.get("transcription_text", "")
     resp = supabase.table('audios').insert({
         "user_id": user_id, "filename": filename, "file_path": file_path,
-        "size_bytes": os.path.getsize(file_path),
+        "size_bytes": len(file_bytes),
         "duration_seconds": request.form.get("duration_seconds", 0, type=int),
         "device_origin": request.form.get("device_origin", "Mobile App (Offline Sync)"),
         "processed": processed, "processed_path": processed_path,
@@ -151,7 +176,9 @@ def reprocess_audio(audio_id):
         return jsonify({"error": "Áudio não encontrado"}), 404
     audio = resp.data[0]
     file_path = audio.get('file_path')
-    if not file_path or not os.path.exists(file_path):
+    if not file_path:
+        return jsonify({"error": "Arquivo de áudio não encontrado no servidor"}), 404
+    if (not is_remote_asset(file_path)) and (not os.path.exists(file_path)):
         return jsonify({"error": "Arquivo de áudio não encontrado no servidor"}), 404
     # Limpar erro anterior e resetar status
     supabase.table('audios').update({
@@ -238,14 +265,17 @@ def update_audio(audio_id):
 @jwt_required()
 def delete_audio(audio_id):
     current_user_id = get_jwt_identity()
-    resp = supabase.table('audios').select('filename').eq('id', audio_id).execute()
+    resp = supabase.table('audios').select('filename,file_path,processed_path').eq('id', audio_id).execute()
     if not resp.data:
         return jsonify({"error": "Audio nao encontrado"}), 404
-    filename = resp.data[0]['filename']
+    audio = resp.data[0]
+    filename = audio['filename']
     supabase.table('events').insert({
         "user_id": current_user_id, "event_type": "AUDIO_DELETED", "level": "warn",
         "screen": "audios", "details_json": json.dumps({"audio_id": audio_id, "filename": filename}),
     }).execute()
+    delete_asset(audio.get('processed_path'))
+    delete_asset(audio.get('file_path'))
     supabase.table('audios').delete().eq('id', audio_id).execute()
     return jsonify({"message": "Audio removido com sucesso"})
 
@@ -263,53 +293,16 @@ def batch_export_audios():
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for audio in audios:
             fzip = audio.get('processed_path') if (audio.get('processed') and audio.get('processed_path')) else audio.get('file_path')
-            if fzip and os.path.exists(fzip):
-                zf.write(fzip, arcname=f"audios/{audio['filename']}")
+            if fzip:
+                try:
+                    if is_remote_asset(fzip):
+                        zf.writestr(f"audios/{audio['filename']}", read_audio_bytes(fzip))
+                    elif os.path.exists(fzip):
+                        zf.write(fzip, arcname=f"audios/{audio['filename']}")
+                except Exception:
+                    pass
             if audio.get('transcription_text'):
                 txt_name = f"transcriptions/{os.path.splitext(audio['filename'])[0]}.txt"
                 zf.writestr(txt_name, audio['transcription_text'])
     memory_file.seek(0)
     return send_file(memory_file, mimetype="application/zip", as_attachment=True, download_name="calmwave_export.zip")
-
-
-@audios_bp.route("/sync", methods=["POST"])
-@jwt_required(optional=True)
-def sync_audio():
-    """
-    Registra metadados de um áudio que está armazenado localmente no dispositivo mobile.
-    Nenhum arquivo é enviado — apenas os dados do áudio são persistidos no banco.
-    Se o usuário não enviar Token JWT, o áudio será salvo na conta 'Guest'.
-    """
-    user_id = get_jwt_identity()
-    if not user_id:
-        guest_resp = supabase.table("users").select("id").eq("email", "guest@calmwave.com").execute()
-        if guest_resp.data:
-            user_id = guest_resp.data[0]["id"]
-        else:
-            return jsonify({"error": "Usuário guest não encontrado no sistema"}), 500
-
-    data = request.get_json(silent=True) or {}
-
-    filename = data.get("filename")
-    if not filename:
-        return jsonify({"error": "Campo 'filename' é obrigatório"}), 400
-
-    record = {
-        "user_id": int(user_id),
-        "filename": filename,
-        "duration_seconds": data.get("duration_seconds", 0),
-        "size_bytes": data.get("size_bytes", 0),
-        # device_origin identifica que o arquivo está no dispositivo (sem file_path)
-        "device_origin": data.get("device_origin", "Mobile"),
-        "recorded_at": data.get("recorded_at"),
-        "processed": False,
-        "transcribed": False,
-        "favorite": False,
-    }
-
-    resp = supabase.table("audios").insert(record).execute()
-    if not resp.data:
-        return jsonify({"error": "Erro ao sincronizar áudio"}), 500
-
-    return jsonify({"audio": resp.data[0]}), 201
-

@@ -5,6 +5,9 @@ from app.supabase_ext import supabase
 import time
 from datetime import datetime
 import os, base64, json
+from tempfile import NamedTemporaryFile
+
+from app.services.cloudinary_service import upload_audio_bytes
 
 streaming_bp = Blueprint("streaming", __name__)
 
@@ -115,9 +118,16 @@ def handle_stop_stream():
             size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             duration = int(time.time() - session_data["start_time"])
             if size_bytes > 0:
+                with open(file_path, 'rb') as f:
+                    raw_audio_bytes = f.read()
+                original_upload = upload_audio_bytes(
+                    raw_audio_bytes,
+                    filename=session_data["filename"],
+                    folder="calmwave/audios/original",
+                )
                 audio_resp = supabase.table('audios').insert({
                     "user_id": user_id, "filename": session_data["filename"],
-                    "file_path": file_path, "size_bytes": size_bytes,
+                    "file_path": original_upload["secure_url"], "size_bytes": size_bytes,
                     "duration_seconds": duration,
                     "device_origin": session_data["device"] + " (Stream)",
                     "processed": False, "transcribed": False, "favorite": False,
@@ -133,20 +143,30 @@ def handle_stop_stream():
                 if denoiser and denoiser.ensure_model_loaded():
                     try:
                         start_p = time.time()
-                        with open(file_path, 'rb') as f:
-                            raw = f.read()
-                        processed_bytes = denoiser.denoise_audio(raw)
+                        processed_bytes = denoiser.denoise_audio(raw_audio_bytes)
                         pname = f"processed_{session_data['filename']}"
-                        ppath = os.path.join(os.path.dirname(file_path), pname)
-                        with open(ppath, 'wb') as f:
-                            f.write(processed_bytes)
+                        processed_upload = upload_audio_bytes(
+                            processed_bytes,
+                            filename=pname,
+                            folder="calmwave/audios/processed",
+                        )
+                        ppath = processed_upload["secure_url"]
                         update_data = {
                             "processed": True, "processed_path": ppath,
                             "processing_time_ms": int((time.time() - start_p) * 1000),
                         }
                         if transcribe_audio:
                             lang = 'pt-BR'
-                            tx = transcribe_audio(ppath, language=lang)
+                            with NamedTemporaryFile(delete=False, suffix=os.path.splitext(pname)[1] or '.wav') as tmp:
+                                tmp.write(processed_bytes)
+                                tmp_processed = tmp.name
+                            try:
+                                tx = transcribe_audio(tmp_processed, language=lang)
+                            finally:
+                                try:
+                                    os.remove(tmp_processed)
+                                except Exception:
+                                    pass
                             if tx:
                                 update_data["transcribed"] = True
                                 update_data["transcription_text"] = tx
@@ -160,6 +180,11 @@ def handle_stop_stream():
                         socketio.emit('new_notification', notif.data[0])
                     except Exception as e:
                         print(f"Error processing streamed audio: {e}")
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
         except Exception as e:
             print(f"Error saving stream: {e}")
         del active_sessions[sid]

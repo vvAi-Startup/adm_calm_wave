@@ -2,6 +2,10 @@ import os
 import time
 import json
 import logging
+from tempfile import NamedTemporaryFile
+from urllib.parse import urlparse
+
+from app.services.cloudinary_service import read_audio_bytes, upload_audio_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +25,20 @@ def _do_process(audio_id, file_path, user_id, language='pt-BR'):
 
     start_time = time.time()
     try:
-        with open(file_path, 'rb') as f:
-            audio_bytes = f.read()
+        audio_bytes = read_audio_bytes(file_path)
 
         processed_bytes = denoiser.denoise_audio(audio_bytes)
 
-        upload_dir = os.path.dirname(file_path)
-        filename = os.path.basename(file_path)
+        parsed = urlparse(file_path)
+        source_name = os.path.basename(parsed.path) if parsed.scheme else os.path.basename(file_path)
+        filename = source_name or f"audio_{audio_id}.wav"
         processed_filename = f"processed_{filename}"
-        processed_path = os.path.join(upload_dir, processed_filename)
-
-        with open(processed_path, 'wb') as f:
-            f.write(processed_bytes)
+        processed_upload = upload_audio_bytes(
+            processed_bytes,
+            filename=processed_filename,
+            folder="calmwave/audios/processed",
+        )
+        processed_path = processed_upload["secure_url"]
 
         update_data = {
             "processed": True,
@@ -43,7 +49,17 @@ def _do_process(audio_id, file_path, user_id, language='pt-BR'):
 
         if transcribe_audio:
             try:
-                transcription = transcribe_audio(processed_path, language=language)
+                suffix = os.path.splitext(processed_filename)[1] or ".wav"
+                with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(processed_bytes)
+                    temp_processed_path = tmp.name
+                try:
+                    transcription = transcribe_audio(temp_processed_path, language=language)
+                finally:
+                    try:
+                        os.remove(temp_processed_path)
+                    except Exception:
+                        pass
                 if transcription:
                     update_data["transcribed"] = True
                     update_data["transcription_text"] = transcription

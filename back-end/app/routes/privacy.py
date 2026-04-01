@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.supabase_ext import supabase
-import os
+from app.services.cloudinary_service import delete_asset
 
 privacy_bp = Blueprint('privacy', __name__)
 
@@ -38,16 +38,12 @@ def delete_account():
     if not user_resp.data:
         return jsonify({"error": "Usuario nao encontrado"}), 404
 
-    # Delete physical audio files
+    # Delete physical/remote audio files
     audios = supabase.table('audios').select('file_path,processed_path').eq('user_id', current_user_id).execute().data or []
     for audio in audios:
         for path_key in ['file_path', 'processed_path']:
             p = audio.get(path_key)
-            if p and os.path.exists(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+            delete_asset(p)
 
     # Delete related records
     for table in ['audios', 'user_devices', 'user_achievements', 'settings',
