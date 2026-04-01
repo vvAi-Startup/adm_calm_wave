@@ -3,15 +3,22 @@ import subprocess
 import tempfile
 import os
 
-API_KEY = "rnd_znHrgDvMv1RVUhzMe1T2RVUgL4vU"
-OWNER_ID = "tea-d6nkr615pdvs73e3ilsg"
-REPO = "https://github.com/vvAi-Startup/adm_calm_wave"
-BRANCH = "deploy-render"
-REDIS_ID = "red-d6nml54hg0os73c7d4l0"
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Variável obrigatória ausente: {name}")
+    return value
 
-SUPABASE_URL = "https://rxepuatqfqqpnalnlojv.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4ZXB1YXRxZnFxcG5hbG5sb2p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwODA3MDUsImV4cCI6MjA4ODY1NjcwNX0.C8xM3clItGMrQAmU0oT_1InK2ZIdwSdUQSPobUDC9-s"
-DATABASE_URL = "postgresql://postgres.rxepuatqfqqpnalnlojv:jw9fzuYnTJZ4Uogd@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+
+API_KEY = _required_env("RENDER_API_KEY")
+OWNER_ID = _required_env("RENDER_OWNER_ID")
+REPO = os.getenv("RENDER_REPO", "https://github.com/vvAi-Startup/adm_calm_wave")
+BRANCH = os.getenv("RENDER_BRANCH", "deploy-render")
+REDIS_ID = _required_env("RENDER_REDIS_ID")
+
+SUPABASE_URL = _required_env("SUPABASE_URL")
+SUPABASE_KEY = _required_env("SUPABASE_KEY")
+DATABASE_URL = _required_env("DATABASE_URL")
 
 def api(method, path, body=None):
     url = f"https://api.render.com/v1{path}"
