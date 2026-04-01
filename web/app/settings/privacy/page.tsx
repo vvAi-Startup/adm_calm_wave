@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     const handleExport = async () => {
         setLoadingExport(true);
         try {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("calmwave_token");
             const response = await fetch("http://localhost:5000/api/privacy/export", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -38,7 +38,7 @@ export default function PrivacyPage() {
 
         setLoadingDelete(true);
         try {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("calmwave_token");
             const response = await fetch("http://localhost:5000/api/privacy/delete-account", {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }

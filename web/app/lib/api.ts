@@ -385,3 +385,11 @@ export const notificationsAPI = {
   markRead: (id: number) => fetchAPI<{ message: string; notification: Notification }>(`/api/notifications/${id}/read`, { method: "PUT" }),
   markAllRead: () => fetchAPI<{ message: string }>("/api/notifications/read-all", { method: "PUT" })
 };
+
+export const adminNotificationsAPI = {
+  broadcast: (data: { title: string; message: string; type: string }) =>
+    fetchAPI<{ notification: Notification }>("/api/admin/notifications/broadcast", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};

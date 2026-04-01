@@ -17,7 +17,7 @@ export default function BillingPage() {
 
     const loadPlan = async () => {
         try {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("calmwave_token");
             const response = await fetch("http://localhost:5000/api/billing/plan", {
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -38,7 +38,7 @@ export default function BillingPage() {
     const changePlan = async (novoPlano: string) => {
         setActionLoading(true);
         try {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("calmwave_token");
             const response = await fetch("http://localhost:5000/api/billing/upgrade", {
                 method: "POST",
                 headers: {

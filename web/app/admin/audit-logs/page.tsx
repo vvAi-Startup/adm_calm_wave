@@ -18,7 +18,7 @@ export default function AuditLogsPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("calmwave_token");
         fetch("http://localhost:5000/api/admin/audit-logs", {
             headers: { Authorization: `Bearer ${token}` }
         })
