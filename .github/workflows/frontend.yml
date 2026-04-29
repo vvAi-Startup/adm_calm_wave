@@ -1,0 +1,44 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: ["**"]
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend.yml'
+
+jobs:
+  build-and-lint:
+    name: Build e Lint do Next.js
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web/package-lock.json' # Opcional, acelera a instalação se existir
+
+      - name: Instalar dependências
+        working-directory: ./web
+        # Usamos npm install caso não tenha package-lock.json ainda, mas npm ci é encorajado
+        run: npm install
+
+      - name: Executar Linter
+        working-directory: ./web
+        run: npm run lint
+
+      - name: Testar Build de Produção
+        working-directory: ./web
+        # Ignora avisos do ESLint/TypeScript durante o build se necessário, 
+        # mas o ideal é que o build só passe se o código estiver perfeito.
+        run: npm run build
