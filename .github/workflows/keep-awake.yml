@@ -1,0 +1,17 @@
+name: Keep Services Awake
+
+on:
+  schedule:
+    # Roda a cada 10 minutos para evitar que o Render free-tier adormeça 
+    # e que o Supabase pause o projeto por inatividade.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Permite rodar manualmente caso precisar
+
+jobs:
+  ping-services:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Healthcheck Route
+        run: |
+          # O endpoint `/health` (registrado em /api/health) bate no Supabase também, mantendo ambos acordados
+          curl -sS -f ${{ secrets.API_URL }}/api/health || echo "Ping falhou, mas requisição foi feita"
