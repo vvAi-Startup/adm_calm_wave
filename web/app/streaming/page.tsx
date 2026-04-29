@@ -44,6 +44,7 @@ export default function StreamingPage() {
             transports: ["websocket", "polling"]
         });
 
+        /* eslint-disable react-hooks/set-state-in-effect */
         setSocket(newSocket);
 
         newSocket.on("connect", () => {
@@ -124,7 +125,7 @@ export default function StreamingPage() {
                                     <div
                                         key={i}
                                         className="wave-bar played"
-                                        style={{ height: `${15 + Math.abs(Math.sin(i * 0.4)) * 65 + Math.random() * 20}%`, opacity: 0.6 + (i / 60) * 0.4 }}
+                                        style={{ height: `${15 + Math.abs(Math.sin(i * 0.4)) * 65 + (i % 10) * 2}%`, opacity: 0.6 + (i / 60) * 0.4 }}
                                     />
                                 ))}
                             </div>

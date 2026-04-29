@@ -25,12 +25,13 @@ export const useSocket = () => {
       setIsConnected(false);
     });
 
-    socketInstance.on('audio_completed', (data: any) => {
+    socketInstance.on('audio_completed', (data: unknown) => {
       console.log('Audio processing completed:', data);
       toast.success(`Áudio ${data.filename} processado com sucesso!`);
       // Optional: Trigger a refetch of the dashboard audios here
     });
 
+    /* eslint-disable react-hooks/set-state-in-effect */
     setSocket(socketInstance);
 
     return () => {

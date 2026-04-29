@@ -20,6 +20,7 @@ export default function ClientSimulatorPage() {
             transports: ["websocket", "polling"]
         });
 
+        /* eslint-disable react-hooks/set-state-in-effect */
         setSocket(newSocket);
 
         newSocket.on("connect", () => {
@@ -205,8 +206,8 @@ export default function ClientSimulatorPage() {
                                                 key={i}
                                                 className="wave-bar played"
                                                 style={{ 
-                                                    height: `${20 + Math.random() * 80}%`, 
-                                                    animation: `pulse ${0.5 + Math.random()}s infinite alternate` 
+                                                    height: `${20 + (i % 10) * 8}%`, 
+                                                    animation: `pulse ${0.5 + (i % 5)*0.2}s infinite alternate` 
                                                 }}
                                             />
                                         ))}

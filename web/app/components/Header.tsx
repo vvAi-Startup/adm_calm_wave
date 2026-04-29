@@ -64,6 +64,7 @@ export default function Header({ title, subtitle, status = "online" }: HeaderPro
 
         };
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
 

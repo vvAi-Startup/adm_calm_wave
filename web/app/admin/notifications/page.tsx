@@ -32,7 +32,7 @@ export default function NotificationsPage() {
             setTitle("");
             setMessage("");
             setType("info");
-        } catch (e: any) {
+        } catch (e: unknown) {
             toast.error(e.message || "Erro de conexão ao enviar notificação.", {
                 id: loadingToast,
             });

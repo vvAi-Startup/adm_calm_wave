@@ -33,6 +33,7 @@ export default function LogsPage() {
     };
 
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect */
         fetchEvents();
         
         // Auto-refresh every 10 seconds

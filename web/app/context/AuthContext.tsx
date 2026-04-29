@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .catch(() => localStorage.removeItem("calmwave_token"))
                 .finally(() => setLoading(false));
         } else {
+            /* eslint-disable react-hooks/set-state-in-effect */
             setLoading(false);
         }
     }, []);

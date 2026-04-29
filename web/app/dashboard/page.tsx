@@ -171,7 +171,7 @@ export default function DashboardPage() {
                     <div className="card">
                         <div className="card-header">
                             <div className="card-title">Últimos Uploads</div>
-                            <a href="/audios" className="btn btn-secondary btn-sm">Ver todos</a>
+                            <Link href="/audios" className="btn btn-secondary btn-sm">Ver todos</Link>
                         </div>
                         <div className="table-wrap">
                             <table>
