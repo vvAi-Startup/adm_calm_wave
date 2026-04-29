@@ -1,0 +1,16 @@
+# Configuração do GitHub Dependabot para manter pacotes listados atualizados e apontar falhas
+version: 2
+updates:
+  # Verifica o Back-end (Python/Pip) semanalmente
+  - package-ecosystem: "pip"
+    directory: "/back-end"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Verifica o Front-end (NPM) semanalmente
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
