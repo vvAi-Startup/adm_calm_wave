@@ -8,6 +8,7 @@ const navItems = [
     { href: "/audios", icon: "🎙️", label: "Áudios", section: "Conteúdo" },
     { href: "/playlists", icon: "🗂️", label: "Playlists", section: "Conteúdo" },
     { href: "/streaming", icon: "📡", label: "Streaming", section: "Conteúdo" },
+    { href: "/rooms", icon: "🏠", label: "Salas de Áudio", section: "Conteúdo" },
     { href: "/client-simulator", icon: "📱", label: "Simulador App", section: "Conteúdo" },
     { href: "/users", icon: "👥", label: "Usuários", section: "Administração" },
     { href: "/support", icon: "💬", label: "Suporte (Inbox)", section: "Administração" },
