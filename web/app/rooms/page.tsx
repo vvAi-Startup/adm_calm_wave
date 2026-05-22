@@ -306,7 +306,14 @@ export default function RoomsPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = "audio/wav";
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        stream.getTracks().forEach((track) => track.stop());
+        toast.error("Seu navegador não suporta gravação em WAV");
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
