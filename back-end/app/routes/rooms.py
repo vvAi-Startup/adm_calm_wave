@@ -233,6 +233,33 @@ def handle_leave_room(data):
     }, to=f"room_{room_code}")
 
 
+@socketio.on('disconnect')
+def handle_room_disconnect():
+    sid = request.sid
+    try:
+        supabase.table('room_participants') \
+            .update({"left_at": datetime.utcnow().isoformat()}) \
+            .eq('socket_id', sid) \
+            .is_('left_at', 'null') \
+            .execute()
+    except Exception as e:
+        print(f"Erro ao atualizar desconexão do socket {sid}: {e}")
+
+    disconnected_rooms = [
+        room_code for room_code, stream in active_room_streams.items()
+        if stream.get("host_sid") == sid
+    ]
+    for room_code in disconnected_rooms:
+        stream = active_room_streams.pop(room_code, None)
+        if not stream:
+            continue
+        try:
+            if os.path.exists(stream["file_path"]):
+                os.remove(stream["file_path"])
+        except Exception as e:
+            print(f"Erro ao limpar stream da sala {room_code}: {e}")
+
+
 @socketio.on('audio_chunk_room')
 def handle_audio_chunk_room(data):
     """
