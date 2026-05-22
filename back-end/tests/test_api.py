@@ -57,3 +57,7 @@ def test_unknown_method_on_endpoint(client):
     response = client.post('/api/health')
     assert response.status_code == 405
 
+def test_close_room_requires_token(client):
+    """Garante que encerramento de sala exige autenticação JWT."""
+    response = client.delete('/api/rooms/ABC123')
+    assert response.status_code == 401

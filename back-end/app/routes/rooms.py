@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from flask_socketio import emit, join_room, leave_room
 from app import socketio
 from app.supabase_ext import supabase
@@ -8,8 +9,10 @@ import string
 import os
 import base64
 import json
+import io
 from datetime import datetime
 from tempfile import NamedTemporaryFile
+from pydub import AudioSegment
 
 from app.services.cloudinary_service import upload_audio_bytes
 
@@ -22,6 +25,8 @@ except ImportError:
     transcribe_audio = None
 
 # room_code -> {file_path, filename, host_sid, start_time, messages}
+# Este estado é em memória local do processo; o streaming de salas exige execução
+# single-process até migrarmos para um backend compartilhado (ex.: Redis).
 active_room_streams = {}
 
 
@@ -29,14 +34,22 @@ def _generate_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
-def _get_valid_user_id():
+def _get_room_host_user_id(room_id):
     try:
-        resp = supabase.table('users').select('id').order('id').limit(1).execute()
+        resp = supabase.table('rooms').select('host_user_id').eq('id', room_id).limit(1).execute()
         if resp.data:
-            return resp.data[0]['id']
+            return resp.data[0].get('host_user_id')
     except Exception:
         pass
-    return 1
+    return None
+
+
+def _convert_audio_bytes(audio_bytes, source_format='webm', target_format='wav'):
+    source_buffer = io.BytesIO(audio_bytes)
+    target_buffer = io.BytesIO()
+    audio = AudioSegment.from_file(source_buffer, format=source_format)
+    audio.export(target_buffer, format=target_format)
+    return target_buffer.getvalue()
 
 
 # ─── REST ─────────────────────────────────────────────────────────────────────
@@ -91,12 +104,18 @@ def get_room(room_code):
 
 
 @rooms_bp.route("/<room_code>", methods=["DELETE"])
+@jwt_required()
 def close_room(room_code):
-    room_resp = supabase.table('rooms').select('id').eq('room_code', room_code).execute()
+    current_user_id = get_jwt_identity()
+    room_resp = supabase.table('rooms').select('id,host_user_id').eq('room_code', room_code).execute()
     if not room_resp.data:
         return jsonify({"error": "Sala não encontrada"}), 404
+    room = room_resp.data[0]
+    if str(room.get('host_user_id')) != str(current_user_id):
+        return jsonify({"error": "Apenas o host pode encerrar a sala"}), 403
 
     supabase.table('rooms').update({"is_active": False}).eq('room_code', room_code).execute()
+    active_room_streams.pop(room_code, None)
     socketio.emit('room_closed', {"room_code": room_code}, to=f"room_{room_code}")
     return jsonify({"message": "Sala encerrada"})
 
@@ -134,7 +153,7 @@ def handle_join_as_host(data):
     # Cria arquivo para gravar o stream
     upload_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
-    filename = f"room_{room_code}_{int(time.time())}.wav"
+    filename = f"room_{room_code}_{int(time.time())}.webm"
     file_path = os.path.join(upload_dir, filename)
     with open(file_path, 'wb'):
         pass
@@ -191,7 +210,7 @@ def handle_join_as_listener(data):
 
     # Busca participantes ativos na sala
     parts_resp = supabase.table('room_participants') \
-        .select('username, role') \
+        .select('id,username, role, socket_id') \
         .eq('room_id', room['id']) \
         .is_('left_at', 'null') \
         .execute()
@@ -231,6 +250,62 @@ def handle_leave_room(data):
         'room_code': room_code,
         'socket_id': sid,
     }, to=f"room_{room_code}")
+
+    stream = active_room_streams.get(room_code)
+    if stream and stream.get("host_sid") == sid:
+        file_path = stream.get("file_path")
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
+        active_room_streams.pop(room_code, None)
+        supabase.table('rooms').update({"is_active": False}).eq('room_code', room_code).execute()
+        socketio.emit('room_closed', {"room_code": room_code}, to=f"room_{room_code}")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+
+    try:
+        parts_resp = supabase.table('room_participants') \
+            .select('room_id') \
+            .eq('socket_id', sid) \
+            .is_('left_at', 'null') \
+            .execute()
+
+        room_ids = [p['room_id'] for p in (parts_resp.data or [])]
+        supabase.table('room_participants') \
+            .update({"left_at": datetime.utcnow().isoformat()}) \
+            .eq('socket_id', sid) \
+            .is_('left_at', 'null') \
+            .execute()
+
+        if room_ids:
+            rooms_resp = supabase.table('rooms').select('room_code').in_('id', room_ids).execute()
+            for room in rooms_resp.data or []:
+                room_code = room.get('room_code')
+                if room_code:
+                    socketio.emit('room_participant_left', {
+                        'room_code': room_code,
+                        'socket_id': sid,
+                    }, to=f"room_{room_code}")
+    except Exception as e:
+        print(f"Erro ao tratar disconnect para {sid}: {e}")
+
+    for room_code, stream in list(active_room_streams.items()):
+        if stream.get("host_sid") != sid:
+            continue
+        file_path = stream.get("file_path")
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
+        active_room_streams.pop(room_code, None)
+        supabase.table('rooms').update({"is_active": False}).eq('room_code', room_code).execute()
+        socketio.emit('room_closed', {"room_code": room_code}, to=f"room_{room_code}")
 
 
 @socketio.on('audio_chunk_room')
@@ -294,7 +369,9 @@ def handle_stop_room_stream(data):
     duration = int(time.time() - stream["start_time"])
 
     try:
-        user_id = _get_valid_user_id()
+        user_id = _get_room_host_user_id(stream["room_id"])
+        if user_id is None:
+            raise ValueError("Host da sala não encontrado para salvar o áudio")
         size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
         if size_bytes > 0:
@@ -329,7 +406,8 @@ def handle_stop_room_stream(data):
 
             if denoiser and denoiser.ensure_model_loaded():
                 try:
-                    processed_bytes = denoiser.denoise_audio(raw_audio_bytes)
+                    wav_bytes = _convert_audio_bytes(raw_audio_bytes, source_format='webm', target_format='wav')
+                    processed_bytes = denoiser.denoise_audio(wav_bytes)
                     pname = f"processed_{filename}"
                     processed_upload = upload_audio_bytes(
                         processed_bytes,

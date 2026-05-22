@@ -2725,7 +2725,9 @@
           },
           {
             "event": "room_closed",
-            "payload": {}
+            "payload": {
+              "room_code": "string"
+            }
           },
           {
             "event": "room_error",
@@ -2776,7 +2778,14 @@
             }
           },
           "404": {
-            "$ref": "#/components/schemas/Error"
+            "description": "Sala não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -2786,6 +2795,11 @@
         ],
         "summary": "Encerrar sala",
         "description": "Encerra a sala e notifica todos os participantes via WebSocket.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "room_code",
@@ -2801,7 +2815,24 @@
             "description": "Sala encerrada"
           },
           "404": {
-            "$ref": "#/components/schemas/Error"
+            "description": "Sala não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Usuário sem permissão para encerrar a sala",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
