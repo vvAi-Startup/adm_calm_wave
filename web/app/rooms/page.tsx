@@ -82,9 +82,26 @@ export default function RoomsPage() {
     const sb = sourceBufferRef.current;
     if (!sb || !msReadyRef.current) return;
     while (chunkQueueRef.current.length > 0 && !sb.updating) {
+      const nextChunk = chunkQueueRef.current[0];
+      if (!nextChunk) break;
+
       try {
-        sb.appendBuffer(chunkQueueRef.current.shift()!);
-      } catch {
+        sb.appendBuffer(nextChunk);
+        chunkQueueRef.current.shift();
+      } catch (error) {
+        if (error instanceof DOMException) {
+          if (error.name === "QuotaExceededError") {
+            // Buffer cheio temporariamente: mantém o chunk na fila para tentar novamente depois.
+            break;
+          }
+
+          if (error.name === "InvalidStateError") {
+            // SourceBuffer/MediaSource ainda não está pronto para append: preserva a fila.
+            break;
+          }
+        }
+
+        console.error("Erro ao anexar chunk de áudio ao SourceBuffer:", error);
         break;
       }
     }
