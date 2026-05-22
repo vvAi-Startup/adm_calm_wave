@@ -153,13 +153,44 @@ CREATE TABLE support_tickets (
 ;
 
 CREATE TABLE ticket_messages (
-	id INTEGER NOT NULL, 
-	ticket_id INTEGER NOT NULL, 
-	sender VARCHAR(50) NOT NULL, 
-	message TEXT NOT NULL, 
-	sent_at DATETIME, 
-	PRIMARY KEY (id), 
+	id INTEGER NOT NULL,
+	ticket_id INTEGER NOT NULL,
+	sender VARCHAR(50) NOT NULL,
+	message TEXT NOT NULL,
+	sent_at DATETIME,
+	PRIMARY KEY (id),
 	FOREIGN KEY(ticket_id) REFERENCES support_tickets (id)
+)
+
+;
+
+CREATE TABLE rooms (
+	id SERIAL NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	host_user_id INTEGER,
+	room_code VARCHAR(10) NOT NULL,
+	is_active BOOLEAN DEFAULT TRUE,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+	PRIMARY KEY (id),
+	UNIQUE (room_code),
+	FOREIGN KEY(host_user_id) REFERENCES users (id) ON DELETE SET NULL
+)
+
+;
+
+CREATE TABLE room_participants (
+	id SERIAL NOT NULL,
+	room_id INTEGER NOT NULL,
+	user_id INTEGER,
+	socket_id VARCHAR(255),
+	role VARCHAR(20) NOT NULL DEFAULT 'listener',
+	username VARCHAR(255),
+	joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+	left_at TIMESTAMP WITH TIME ZONE,
+	PRIMARY KEY (id),
+	FOREIGN KEY(room_id) REFERENCES rooms (id) ON DELETE CASCADE,
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE SET NULL
 )
 
 ;

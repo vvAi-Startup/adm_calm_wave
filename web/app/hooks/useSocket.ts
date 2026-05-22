@@ -5,6 +5,15 @@ import toast from 'react-hot-toast';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
 
+export interface RoomAudioCompletedEvent {
+  room_code: string;
+  audio_id: number;
+  processed_url: string | null;
+  transcription: string | null;
+  duration_seconds: number;
+  filename: string;
+}
+
 export const useSocket = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -29,7 +38,15 @@ export const useSocket = () => {
       console.log('Audio processing completed:', data);
       const filename = (data as { filename?: string })?.filename || '';
       toast.success(`Áudio ${filename} processado com sucesso!`);
-      // Optional: Trigger a refetch of the dashboard audios here
+    });
+
+    socketInstance.on('room_audio_completed', (data: RoomAudioCompletedEvent) => {
+      console.log('Room audio completed:', data);
+      toast.success(`Sala ${data.room_code}: áudio processado!`);
+    });
+
+    socketInstance.on('room_closed', (data: { room_code: string }) => {
+      toast.error(`Sala ${data.room_code} foi encerrada`);
     });
 
     /* eslint-disable react-hooks/set-state-in-effect */

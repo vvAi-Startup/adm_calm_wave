@@ -111,8 +111,10 @@ def create_app():
     from app.routes.privacy import privacy_bp
     from app.routes.billing import billing_bp
     from app.routes.health import health_bp
+    from app.routes.rooms import rooms_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
+    app.register_blueprint(rooms_bp, url_prefix="/api/rooms")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
     app.register_blueprint(audios_bp, url_prefix="/api/audios")
