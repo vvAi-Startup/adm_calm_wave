@@ -1,17 +1,19 @@
 from flask import Blueprint, request, jsonify
 from flask_socketio import emit, join_room, leave_room
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import socketio
 from app.supabase_ext import supabase
 import time
 import random
 import string
 import os
+import io
 import base64
-import json
 from datetime import datetime
 from tempfile import NamedTemporaryFile
 
 from app.services.cloudinary_service import upload_audio_bytes
+from pydub import AudioSegment
 
 rooms_bp = Blueprint("rooms", __name__)
 
@@ -21,7 +23,9 @@ except ImportError:
     denoiser = None
     transcribe_audio = None
 
-# room_code -> {file_path, filename, host_sid, start_time, messages}
+# room_code -> {file_path, filename, host_sid, host_user_id, start_time, messages}
+# IMPORTANTE: este estado em memória funciona corretamente apenas em execução single-process.
+# Em múltiplos workers/processos, migre para armazenamento compartilhado (ex.: Redis).
 active_room_streams = {}
 
 
@@ -29,14 +33,11 @@ def _generate_room_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
-def _get_valid_user_id():
-    try:
-        resp = supabase.table('users').select('id').order('id').limit(1).execute()
-        if resp.data:
-            return resp.data[0]['id']
-    except Exception:
-        pass
-    return 1
+def _convert_webm_to_wav_bytes(webm_bytes: bytes) -> bytes:
+    audio = AudioSegment.from_file(io.BytesIO(webm_bytes), format="webm")
+    wav_buffer = io.BytesIO()
+    audio.export(wav_buffer, format="wav")
+    return wav_buffer.getvalue()
 
 
 # ─── REST ─────────────────────────────────────────────────────────────────────
@@ -91,12 +92,27 @@ def get_room(room_code):
 
 
 @rooms_bp.route("/<room_code>", methods=["DELETE"])
+@jwt_required()
 def close_room(room_code):
-    room_resp = supabase.table('rooms').select('id').eq('room_code', room_code).execute()
+    current_user_id = int(get_jwt_identity())
+    room_resp = supabase.table('rooms').select('id, host_user_id').eq('room_code', room_code).execute()
     if not room_resp.data:
         return jsonify({"error": "Sala não encontrada"}), 404
 
+    room = room_resp.data[0]
+    if room.get('host_user_id') is None:
+        return jsonify({"error": "Sala sem host definido"}), 403
+    if room['host_user_id'] != current_user_id:
+        return jsonify({"error": "Apenas o host pode encerrar a sala"}), 403
+
     supabase.table('rooms').update({"is_active": False}).eq('room_code', room_code).execute()
+    stream = active_room_streams.pop(room_code, None)
+    if stream:
+        try:
+            if os.path.exists(stream["file_path"]):
+                os.remove(stream["file_path"])
+        except Exception:
+            pass
     socketio.emit('room_closed', {"room_code": room_code}, to=f"room_{room_code}")
     return jsonify({"message": "Sala encerrada"})
 
@@ -134,13 +150,14 @@ def handle_join_as_host(data):
     # Cria arquivo para gravar o stream
     upload_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'uploads')
     os.makedirs(upload_dir, exist_ok=True)
-    filename = f"room_{room_code}_{int(time.time())}.wav"
+    filename = f"room_{room_code}_{int(time.time())}.webm"
     file_path = os.path.join(upload_dir, filename)
     with open(file_path, 'wb'):
         pass
 
     active_room_streams[room_code] = {
         "host_sid": sid,
+        "host_user_id": room.get('host_user_id'),
         "file_path": file_path,
         "filename": filename,
         "device": device,
@@ -191,7 +208,7 @@ def handle_join_as_listener(data):
 
     # Busca participantes ativos na sala
     parts_resp = supabase.table('room_participants') \
-        .select('username, role') \
+        .select('id, username, role, socket_id') \
         .eq('room_id', room['id']) \
         .is_('left_at', 'null') \
         .execute()
@@ -231,6 +248,43 @@ def handle_leave_room(data):
         'room_code': room_code,
         'socket_id': sid,
     }, to=f"room_{room_code}")
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Marca saída de participantes e limpa streams ativos do host desconectado."""
+    sid = request.sid
+    now = datetime.utcnow().isoformat()
+
+    parts_resp = supabase.table('room_participants') \
+        .select('id, room_id') \
+        .eq('socket_id', sid) \
+        .is_('left_at', 'null') \
+        .execute()
+
+    for participant in parts_resp.data or []:
+        supabase.table('room_participants') \
+            .update({"left_at": now}) \
+            .eq('id', participant['id']) \
+            .execute()
+
+        room_resp = supabase.table('rooms').select('room_code').eq('id', participant['room_id']).execute()
+        if room_resp.data:
+            room_code = room_resp.data[0]['room_code']
+            socketio.emit('room_participant_left', {
+                'room_code': room_code,
+                'socket_id': sid,
+            }, to=f"room_{room_code}")
+
+    for room_code, stream in list(active_room_streams.items()):
+        if stream.get("host_sid") == sid:
+            try:
+                if os.path.exists(stream["file_path"]):
+                    os.remove(stream["file_path"])
+            except Exception:
+                pass
+            active_room_streams.pop(room_code, None)
+            socketio.emit('room_closed', {"room_code": room_code}, to=f"room_{room_code}")
 
 
 @socketio.on('audio_chunk_room')
@@ -294,7 +348,9 @@ def handle_stop_room_stream(data):
     duration = int(time.time() - stream["start_time"])
 
     try:
-        user_id = _get_valid_user_id()
+        user_id = stream.get("host_user_id")
+        if not user_id:
+            raise ValueError("Sala sem host_user_id definido")
         size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
         if size_bytes > 0:
@@ -329,8 +385,9 @@ def handle_stop_room_stream(data):
 
             if denoiser and denoiser.ensure_model_loaded():
                 try:
-                    processed_bytes = denoiser.denoise_audio(raw_audio_bytes)
-                    pname = f"processed_{filename}"
+                    wav_audio_bytes = _convert_webm_to_wav_bytes(raw_audio_bytes)
+                    processed_bytes = denoiser.denoise_audio(wav_audio_bytes)
+                    pname = f"processed_{os.path.splitext(filename)[0]}.wav"
                     processed_upload = upload_audio_bytes(
                         processed_bytes,
                         filename=pname,
