@@ -2632,7 +2632,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/schemas/Error"
+            "description": "Requisição inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
