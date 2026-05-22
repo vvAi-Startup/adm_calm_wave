@@ -2644,7 +2644,7 @@
         }
       },
       "x-websocket-events": {
-        "description": "Eventos Socket.IO para salas de audio em tempo real",
+        "description": "Eventos Socket.IO para salas de audio em tempo real (estado de stream ativo é in-memory e requer execução single-process).",
         "client_emits": [
           {
             "event": "join_room_as_host",
@@ -2725,7 +2725,9 @@
           },
           {
             "event": "room_closed",
-            "payload": {}
+            "payload": {
+              "room_code": "string"
+            }
           },
           {
             "event": "room_error",
@@ -2776,7 +2778,14 @@
             }
           },
           "404": {
-            "$ref": "#/components/schemas/Error"
+            "description": "Sala não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -2796,12 +2805,34 @@
             }
           }
         ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Sala encerrada"
           },
+          "403": {
+            "description": "Sem permissão para encerrar a sala",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
-            "$ref": "#/components/schemas/Error"
+            "description": "Sala não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

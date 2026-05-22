@@ -7,6 +7,23 @@ import Header from "../components/Header";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+function getCurrentUserIdFromToken(): number | null {
+  if (typeof window === "undefined") return null;
+  const token = localStorage.getItem("calmwave_token");
+  if (!token) return null;
+
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const payload = JSON.parse(atob(payloadPart));
+    const sub = payload?.sub;
+    const userId = typeof sub === "string" ? Number.parseInt(sub, 10) : Number(sub);
+    return Number.isFinite(userId) ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
 interface Room {
   id: number;
   name: string;
@@ -57,6 +74,9 @@ export default function RoomsPage() {
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const chunkQueueRef = useRef<ArrayBuffer[]>([]);
   const msReadyRef = useRef(false);
+  const mediaSourceObjectUrlRef = useRef<string | null>(null);
+  const sourceOpenHandlerRef = useRef<(() => void) | null>(null);
+  const sourceBufferUpdateEndHandlerRef = useRef<(() => void) | null>(null);
 
   // ─── Fetch salas ──────────────────────────────────────────────────────────
 
@@ -107,30 +127,96 @@ export default function RoomsPage() {
     }
   }, []);
 
+  const cleanupListenerAudio = useCallback(() => {
+    const ms = mediaSourceRef.current;
+    const sb = sourceBufferRef.current;
+
+    if (sb && sourceBufferUpdateEndHandlerRef.current) {
+      sb.removeEventListener("updateend", sourceBufferUpdateEndHandlerRef.current);
+    }
+    sourceBufferUpdateEndHandlerRef.current = null;
+
+    if (ms && sourceOpenHandlerRef.current) {
+      ms.removeEventListener("sourceopen", sourceOpenHandlerRef.current);
+    }
+    sourceOpenHandlerRef.current = null;
+
+    if (ms && ms.readyState === "open") {
+      try { ms.endOfStream(); } catch {}
+    }
+
+    mediaSourceRef.current = null;
+    sourceBufferRef.current = null;
+    chunkQueueRef.current = [];
+    msReadyRef.current = false;
+
+    if (mediaSourceObjectUrlRef.current) {
+      URL.revokeObjectURL(mediaSourceObjectUrlRef.current);
+      mediaSourceObjectUrlRef.current = null;
+    }
+
+    if (audioElRef.current) audioElRef.current.src = "";
+  }, []);
+
+  const mergeParticipants = useCallback((existing: Participant[], incoming: Participant[]) => {
+    if (
+      existing.length > 0 &&
+      existing.some((participant) => Boolean(participant.socket_id)) &&
+      incoming.every((participant) => !participant.socket_id)
+    ) {
+      return existing;
+    }
+
+    const merged = [...existing];
+    for (const participant of incoming) {
+      const idx = merged.findIndex((item) => {
+        if (participant.socket_id && item.socket_id) {
+          return item.socket_id === participant.socket_id;
+        }
+        return item.username === participant.username && item.role === participant.role;
+      });
+
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...participant };
+      } else {
+        merged.push(participant);
+      }
+    }
+    return merged;
+  }, []);
+
   const initListenerAudio = useCallback(() => {
     const audio = audioElRef.current;
     if (!audio || mediaSourceRef.current) return;
 
     const ms = new MediaSource();
     mediaSourceRef.current = ms;
-    audio.src = URL.createObjectURL(ms);
+    const objectUrl = URL.createObjectURL(ms);
+    mediaSourceObjectUrlRef.current = objectUrl;
+    audio.src = objectUrl;
 
-    ms.addEventListener("sourceopen", () => {
+    const handleSourceOpen = () => {
       try {
         const mime = 'audio/webm; codecs="opus"';
         const sb = ms.addSourceBuffer(mime);
         sourceBufferRef.current = sb;
 
-        sb.addEventListener("updateend", () => {
+        const handleUpdateEnd = () => {
           flushChunkQueue();
-        });
+        };
+
+        sourceBufferUpdateEndHandlerRef.current = handleUpdateEnd;
+        sb.addEventListener("updateend", handleUpdateEnd);
 
         msReadyRef.current = true;
         flushChunkQueue(); // drena chunks que chegaram antes do sourceopen
       } catch (e) {
         console.error("MediaSource init error:", e);
       }
-    });
+    };
+
+    sourceOpenHandlerRef.current = handleSourceOpen;
+    ms.addEventListener("sourceopen", handleSourceOpen);
 
     audio.play().catch(() => {});
   }, [flushChunkQueue]);
@@ -157,15 +243,7 @@ export default function RoomsPage() {
     }
     stopStreaming();
 
-    // Limpa MediaSource do listener
-    if (mediaSourceRef.current && mediaSourceRef.current.readyState === "open") {
-      try { mediaSourceRef.current.endOfStream(); } catch {}
-    }
-    mediaSourceRef.current = null;
-    sourceBufferRef.current = null;
-    chunkQueueRef.current = [];
-    msReadyRef.current = false;
-    if (audioElRef.current) audioElRef.current.src = "";
+    cleanupListenerAudio();
 
     setView("lobby");
     setActiveRoom(null);
@@ -173,7 +251,7 @@ export default function RoomsPage() {
     setIsStreaming(false);
     setTranscription(null);
     setProcessedUrl(null);
-  }, [activeRoom, stopStreaming]);
+  }, [activeRoom, cleanupListenerAudio, stopStreaming]);
 
   // ─── Socket ───────────────────────────────────────────────────────────────
 
@@ -187,7 +265,7 @@ export default function RoomsPage() {
     socket.on("room_joined", (data) => {
       setMyRole(data.role);
       if (data.participants) {
-        setParticipants(data.participants);
+        setParticipants((prev) => mergeParticipants(prev, data.participants));
       }
       setView("room");
       if (data.role === "listener") {
@@ -217,7 +295,11 @@ export default function RoomsPage() {
         const buf = bytes.buffer;
 
         if (sourceBufferRef.current && msReadyRef.current && !sourceBufferRef.current.updating) {
-          sourceBufferRef.current.appendBuffer(buf);
+          try {
+            sourceBufferRef.current.appendBuffer(buf);
+          } catch {
+            chunkQueueRef.current.push(buf);
+          }
         } else {
           chunkQueueRef.current.push(buf);
         }
@@ -249,10 +331,10 @@ export default function RoomsPage() {
     });
 
     return () => {
+      cleanupListenerAudio();
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initListenerAudio, leaveRoom]);
+  }, [cleanupListenerAudio, initListenerAudio, leaveRoom, mergeParticipants]);
 
   // ─── Criar sala ───────────────────────────────────────────────────────────
 
@@ -262,10 +344,11 @@ export default function RoomsPage() {
       return;
     }
     try {
+      const hostUserId = getCurrentUserIdFromToken();
       const res = await fetch(`${API_URL}/api/rooms`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newRoomName }),
+        body: JSON.stringify({ name: newRoomName, host_user_id: hostUserId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
