@@ -25,3 +25,5 @@ flowchart TD
 | Testes | GitHub Actions (`tests.yml`) | `./back-end` |
 | Backend | Render | `./back-end` |
 | Frontend | Vercel | `./web` |
+
+> ⚠️ Observação: o módulo de streaming em tempo real (`/api/rooms`) usa estado em memória do processo (`active_room_streams`), então deve rodar em **single-process** até migração para backend compartilhado.

@@ -57,6 +57,9 @@ export default function RoomsPage() {
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const chunkQueueRef = useRef<ArrayBuffer[]>([]);
   const msReadyRef = useRef(false);
+  const mediaSourceUrlRef = useRef<string | null>(null);
+  const sourceOpenHandlerRef = useRef<(() => void) | null>(null);
+  const sourceBufferUpdateEndHandlerRef = useRef<(() => void) | null>(null);
 
   // ─── Fetch salas ──────────────────────────────────────────────────────────
 
@@ -112,28 +115,66 @@ export default function RoomsPage() {
     if (!audio || mediaSourceRef.current) return;
 
     const ms = new MediaSource();
+    const objectUrl = URL.createObjectURL(ms);
     mediaSourceRef.current = ms;
-    audio.src = URL.createObjectURL(ms);
+    mediaSourceUrlRef.current = objectUrl;
+    audio.src = objectUrl;
 
-    ms.addEventListener("sourceopen", () => {
+    const onSourceOpen = () => {
       try {
         const mime = 'audio/webm; codecs="opus"';
         const sb = ms.addSourceBuffer(mime);
         sourceBufferRef.current = sb;
 
-        sb.addEventListener("updateend", () => {
+        const onUpdateEnd = () => {
           flushChunkQueue();
-        });
+        };
+        sourceBufferUpdateEndHandlerRef.current = onUpdateEnd;
+        sb.addEventListener("updateend", onUpdateEnd);
 
         msReadyRef.current = true;
         flushChunkQueue(); // drena chunks que chegaram antes do sourceopen
       } catch (e) {
         console.error("MediaSource init error:", e);
       }
-    });
+    };
+    sourceOpenHandlerRef.current = onSourceOpen;
+    ms.addEventListener("sourceopen", onSourceOpen);
 
     audio.play().catch(() => {});
   }, [flushChunkQueue]);
+
+  const cleanupListenerAudio = useCallback(() => {
+    const sb = sourceBufferRef.current;
+    const sbUpdateEndHandler = sourceBufferUpdateEndHandlerRef.current;
+    if (sb && sbUpdateEndHandler) {
+      sb.removeEventListener("updateend", sbUpdateEndHandler);
+    }
+
+    const ms = mediaSourceRef.current;
+    const msSourceOpenHandler = sourceOpenHandlerRef.current;
+    if (ms && msSourceOpenHandler) {
+      ms.removeEventListener("sourceopen", msSourceOpenHandler);
+    }
+
+    if (ms && ms.readyState === "open") {
+      try { ms.endOfStream(); } catch {}
+    }
+
+    mediaSourceRef.current = null;
+    sourceBufferRef.current = null;
+    sourceOpenHandlerRef.current = null;
+    sourceBufferUpdateEndHandlerRef.current = null;
+    chunkQueueRef.current = [];
+    msReadyRef.current = false;
+
+    if (audioElRef.current) audioElRef.current.src = "";
+
+    if (mediaSourceUrlRef.current) {
+      URL.revokeObjectURL(mediaSourceUrlRef.current);
+      mediaSourceUrlRef.current = null;
+    }
+  }, []);
 
   // ─── Parar stream (host) ──────────────────────────────────────────────────
 
@@ -157,15 +198,7 @@ export default function RoomsPage() {
     }
     stopStreaming();
 
-    // Limpa MediaSource do listener
-    if (mediaSourceRef.current && mediaSourceRef.current.readyState === "open") {
-      try { mediaSourceRef.current.endOfStream(); } catch {}
-    }
-    mediaSourceRef.current = null;
-    sourceBufferRef.current = null;
-    chunkQueueRef.current = [];
-    msReadyRef.current = false;
-    if (audioElRef.current) audioElRef.current.src = "";
+    cleanupListenerAudio();
 
     setView("lobby");
     setActiveRoom(null);
@@ -173,7 +206,7 @@ export default function RoomsPage() {
     setIsStreaming(false);
     setTranscription(null);
     setProcessedUrl(null);
-  }, [activeRoom, stopStreaming]);
+  }, [activeRoom, cleanupListenerAudio, stopStreaming]);
 
   // ─── Socket ───────────────────────────────────────────────────────────────
 
@@ -187,7 +220,24 @@ export default function RoomsPage() {
     socket.on("room_joined", (data) => {
       setMyRole(data.role);
       if (data.participants) {
-        setParticipants(data.participants);
+        setParticipants((prev) => {
+          const incoming = data.participants as Participant[];
+          if (!prev.some((p) => p.socket_id)) {
+            return incoming;
+          }
+
+          const merged = [...prev];
+          for (const participant of incoming) {
+            const exists = participant.socket_id
+              ? merged.some((p) => p.socket_id === participant.socket_id)
+              : merged.some((p) => p.username === participant.username && p.role === participant.role);
+
+            if (!exists) {
+              merged.push(participant);
+            }
+          }
+          return merged;
+        });
       }
       setView("room");
       if (data.role === "listener") {
@@ -249,10 +299,10 @@ export default function RoomsPage() {
     });
 
     return () => {
+      cleanupListenerAudio();
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initListenerAudio, leaveRoom]);
+  }, [cleanupListenerAudio, initListenerAudio, leaveRoom]);
 
   // ─── Criar sala ───────────────────────────────────────────────────────────
 
